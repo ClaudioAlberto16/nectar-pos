@@ -1,0 +1,8 @@
+{
+  "name": "NÉCTAR POS & Stock",
+  "short_name": "NÉCTAR",
+  "start_url": "/nectar-pos/",
+  "display": "standalone",
+  "background_color": "#0c0d0e",
+  "theme_color": "#16181a"
+}
