@@ -374,13 +374,13 @@
 
     /* 2. CONEXIÓN CENTRAL A GOOGLE SHEETS */
     // Pega aquí la URL del despliegue de Apps Script cuando esté publicado.
-    const NECTAR_API_URL = 'https://script.google.com/macros/s/AKfycbwjuqSo3XYoWwZjabB9dw5m0b3gWHL5Y8_BLtxFrfP4szLFwrNA6dIkBa1TvcmgtgMr/exec';
+    const NECTAR_API_URL = 'https://script.google.com/macros/s/AKfycbwjuqSo3XYoWwZjabB9dw5m0b3gWHL5Y8_BLtxFrpF4szLFwrNA6dIkBa1TvcmgtgMr/exec';
     const NECTAR_JSONP = {};
     function nectarRequest(action, payload) {
       return new Promise((resolve, reject) => {
         if (!NECTAR_API_URL || NECTAR_API_URL.includes('PEGAR_URL')) return reject(new Error('La conexión con Google Sheets aún no está configurada.'));
         const cb = 'cb_' + Date.now() + '_' + Math.floor(Math.random()*100000);
-        const timer = setTimeout(() => { delete NECTAR_JSONP[cb]; reject(new Error('Tiempo de espera agotado al conectar con Google Sheets.')); }, 15000);
+        const timer = setTimeout(() => { delete NECTAR_JSONP[cb]; reject(new Error('Tiempo de espera agotado al conectar con Google Sheets.')); }, 20000);
         NECTAR_JSONP[cb] = data => { clearTimeout(timer); delete NECTAR_JSONP[cb]; if (data && data.ok) resolve(data); else reject(new Error(data?.error || 'Google Sheets rechazó la operación.')); };
         const params = new URLSearchParams({ action, callback: 'NECTAR_JSONP.' + cb, nonce: String(Date.now()) });
         if (payload) params.set('payload', JSON.stringify(payload));
@@ -654,14 +654,18 @@
       if(paymentMethod==='EFECTIVO' && (!Number.isFinite(cashReceived) || cashReceived < total)){showToast('El efectivo recibido no puede ser menor al total.');return;}
       const sale={folio,date:dateStr,client,phone,location:loc,method:paymentMethod,items,total,cashReceived,change:Math.max(0,cashReceived-total)};
       const btn=document.querySelector('#modal-payment button[onclick="confirmSale()"]');
-      if(btn){btn.disabled=true;btn.textContent='Guardando...';}
+      const paymentModal=document.getElementById('modal-payment');
+      if(btn?.disabled)return;
+      const opId=paymentModal.dataset.pendingOpId||(paymentModal.dataset.pendingOpId=nectarOpId());
+      if(btn){btn.disabled=true;btn.textContent='Guardando en Google Sheets...';}
       try {
-        const response=await nectarRequest('write',{type:'sale',opId:nectarOpId(),sale});
+        const response=await nectarRequest('write',{type:'sale',opId,sale});
         stock=response.result.stock; localStorage.setItem('nectar_stock',JSON.stringify(stock));
         currentSale=response.result.sale||sale; salesHistory.unshift(currentSale); localStorage.setItem('nectar_sales_history',JSON.stringify(salesHistory));
+        delete paymentModal.dataset.pendingOpId;
         closePaymentModal(); emptyCart(); renderCatalog(); renderStock(); renderHistory(); showTicket(currentSale);
-      } catch(err) { showToast(err.message); }
-      finally { if(btn){btn.disabled=false;btn.textContent='Confirmar venta';} }
+      } catch(err) { showToast(err.message+' Si el resultado es incierto, no repitas la operación hasta verificarla en Google Sheets.'); }
+      finally { if(btn){btn.disabled=false;btn.textContent='✓ Confirmar y Emitir Ticket';} }
     }
 
     function showTicket(data) {
@@ -1023,9 +1027,10 @@
     let conData = JSON.parse(localStorage.getItem('nectar_consigna_v1') || '{"stores":[],"history":[]}');
     const conSave = () => localStorage.setItem('nectar_consigna_v1', JSON.stringify(conData));
     async function conPersist(opId, storeId, stockDelta){
-      const r=await nectarRequest('write',{type:'consignment',opId:opId||nectarOpId(),storeId:storeId||'',stockDelta:stockDelta||null,conData});
-      if(r.result.stock){stock=r.result.stock;localStorage.setItem('nectar_stock',JSON.stringify(stock));}
-      conData=r.result.conData||conData; conSave();
+      const r=await nectarRequest('write',{type:'consignment',opId,storeId:storeId||'',stockDelta:stockDelta||null,conData});
+      if(r.result?.stock){stock=r.result.stock;localStorage.setItem('nectar_stock',JSON.stringify(stock));}
+      if(r.result?.conData){conData=r.result.conData;conSave();}
+      return r;
     }
     const money = n => '$' + (Number(n)||0).toFixed(2);
     function toggleCartDrawer(){
@@ -1052,6 +1057,8 @@
       const body=type==='delivery'?`<p class="text-xs text-neutral-400">Costales que salen de bodega y se dejan en ${st.name}.</p>${rows}${!st.firstDelivery?`<label class="block text-xs text-neutral-400 mt-3">Anticipo recibido en esta primera entrega ($)</label><input id="con-first-advance" type="number" min="0" step="0.01" value="0" class="w-full bg-neutral-950 border border-neutral-700 rounded-lg p-2 text-white"><p class="text-[10px] text-neutral-500 mt-1">Captura la cantidad real que te entrega el cliente. Puede ser diferente al 40%.</p>`:''}`:`<p class="text-xs text-neutral-400">Captura los costales vendidos desde el último corte y el dinero que realmente recibiste. El inventario restante se calcula automáticamente.</p>${rows}<label class="block text-xs text-neutral-400 mt-3">Pago recibido ($)</label><input id="con-cut-payment" type="number" min="0" step="0.01" value="0" class="w-full bg-neutral-950 border border-neutral-700 rounded-lg p-2 text-white">`;
       const dlg=document.createElement('div');dlg.className='fixed inset-0 z-[80] bg-black/90 flex items-end sm:items-center justify-center p-3';dlg.innerHTML=`<div class="bg-[#181a1d] border border-neutral-700 rounded-2xl p-4 w-full max-w-md max-h-[90vh] overflow-y-auto"><div class="flex justify-between items-center mb-3"><h3 class="font-bold">${title} · ${st.name}</h3><button class="text-neutral-400" onclick="this.closest('.fixed').remove()">✕</button></div>${body}<div class="flex gap-2 mt-4"><button class="flex-1 bg-neutral-700 rounded-xl py-3 text-xs" onclick="this.closest('.fixed').remove()">Cancelar</button><button class="flex-1 bg-amber-500 text-black rounded-xl py-3 font-bold text-xs" id="con-save-move">Guardar</button></div></div>`;document.body.appendChild(dlg);
       dlg.querySelector('#con-save-move').onclick=async()=>{
+        const saveBtn=dlg.querySelector('#con-save-move');
+        if(saveBtn.disabled)return;
         const vals={};PRODUCTS.forEach(p=>vals[p.id]=Math.max(0,Math.floor(Number(dlg.querySelector('#con-'+type+'-'+p.id).value)||0)));
         const beforeStock=JSON.parse(JSON.stringify(stock)); const beforeCon=JSON.parse(JSON.stringify(conData));
         let remoteStockDelta=null;
@@ -1088,7 +1095,18 @@
           PRODUCTS.forEach(p=>st.stock[p.id]-=vals[p.id]);
           conData.history.unshift({date:new Date().toISOString(),store:st.name,type:'Corte semanal',items:vals,detail:conFormatItems(vals)+' · Ventas '+money(total)+' · Saldo anterior '+money(previousBalance)+' · Pago recibido '+money(paid),amount:paid,sales:total,previousBalance,paid,balance});
         }
-        try{await conPersist(nectarOpId(),st.id,remoteStockDelta);dlg.remove();renderCatalog();conRender();showToast('Movimiento de consignación guardado');}catch(e){stock=beforeStock;conData=beforeCon;localStorage.setItem('nectar_stock',JSON.stringify(stock));conSave();showToast(e.message);}
+        const opId=dlg.dataset.pendingOpId||(dlg.dataset.pendingOpId=nectarOpId());
+        saveBtn.disabled=true;saveBtn.textContent='Guardando en Google Sheets...';
+        try{
+          const response=await conPersist(opId,st.id,remoteStockDelta);
+          if(!response||!response.ok)throw new Error('El servidor no confirmó el movimiento.');
+          dlg.querySelectorAll('input').forEach(input=>{input.value='0';});
+          dlg.remove();renderCatalog();renderStock();conRender();showToast(response.duplicate?'Movimiento ya registrado; datos sincronizados.':'Movimiento de consignación guardado');
+        }catch(e){
+          stock=beforeStock;conData=beforeCon;localStorage.setItem('nectar_stock',JSON.stringify(stock));conSave();
+          saveBtn.disabled=false;saveBtn.textContent='Reintentar con el mismo identificador';
+          showToast(e.message+' Se conservará el identificador de esta operación; verifica Sheets antes de volver a intentarlo.');
+        }
       };
     }
     function conRender(){
