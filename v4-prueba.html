@@ -936,8 +936,10 @@
 
     /* 10. SINCRONIZACIÓN Y NUBE */
     function openSyncModal() {
-      document.getElementById('sync-room-id').value = localStorage.getItem('nectar_sync_room') || 'NECTAR-BODEGA-1';
-      document.getElementById('modal-sync').classList.remove('hidden');
+      // El modal actual ya no utiliza un campo de sala; la conexión se configura
+      // mediante NECTAR_API_URL. Evita acceder a un input inexistente.
+      const modal = document.getElementById('modal-sync');
+      if (modal) modal.classList.remove('hidden');
     }
 
     function closeSyncModal() {
