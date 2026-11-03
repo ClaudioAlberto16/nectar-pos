@@ -970,8 +970,14 @@
     }
 
     async function cloudUpload() {
-      try { await nectarLoadFromSheets(); showToast('✓ Datos consultados desde Google Sheets'); }
-      catch(e){ showToast(e.message); }
+      console.log('Iniciando sincronización con:', NECTAR_API_URL);
+      try {
+        await nectarLoadFromSheets();
+        showToast('✓ Datos consultados desde Google Sheets');
+      } catch(err) {
+        console.error('Fallo en sincronización:', err);
+        showToast(err.message);
+      }
     }
     async function cloudDownload() { await cloudUpload(); }
     async function nectarLoadFromSheets(){
