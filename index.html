@@ -1035,7 +1035,9 @@
     let conData = JSON.parse(localStorage.getItem('nectar_consigna_v1') || '{"stores":[],"history":[]}');
     const conSave = () => localStorage.setItem('nectar_consigna_v1', JSON.stringify(conData));
     async function conPersist(opId, storeId, stockDelta){
-      const r=await nectarRequest('write',{type:'consignment',opId,storeId:storeId||'',stockDelta:stockDelta||null,conData});
+      const payload={type:'consignment',opId,storeId:storeId||'',stockDelta:stockDelta||null,conData};
+      console.log('Datos a enviar consigna:',payload);
+      const r=await nectarRequest('write',payload);
       if(r.result?.stock){stock=r.result.stock;localStorage.setItem('nectar_stock',JSON.stringify(stock));}
       if(r.result?.conData){conData=r.result.conData;conSave();}
       return r;
@@ -1067,15 +1069,31 @@
       dlg.querySelector('#con-save-move').onclick=async()=>{
         const saveBtn=dlg.querySelector('#con-save-move');
         if(saveBtn.disabled)return;
-        const vals={};PRODUCTS.forEach(p=>vals[p.id]=Math.max(0,Math.floor(Number(dlg.querySelector('#con-'+type+'-'+p.id).value)||0)));
+        const vals={};
+        for(const p of PRODUCTS){
+          const input=dlg.querySelector('#con-'+type+'-'+p.id);
+          if(!input){console.error('No se encontró el input de consigna:', 'con-'+type+'-'+p.id);showToast('No se encontró el campo de '+p.phase+'. Cierra y vuelve a abrir el formulario.');return;}
+          vals[p.id]=Math.max(0,parseInt(input.value,10)||0);
+        }
         const beforeStock=JSON.parse(JSON.stringify(stock)); const beforeCon=JSON.parse(JSON.stringify(conData));
         let remoteStockDelta=null;
+        let stockWasDeducted=false;
         if(type==='delivery'){
-          remoteStockDelta={}; PRODUCTS.forEach(p=>remoteStockDelta[p.id]=-vals[p.id]);
           const total=Object.values(vals).reduce((a,b)=>a+b,0);if(!total){showToast('Captura al menos un costal');return;}
           const deliveryValue=PRODUCTS.reduce((a,p)=>a+vals[p.id]*p.price,0);
-          for(const p of PRODUCTS){if((stock[p.id]||0)<vals[p.id]){showToast('Stock insuficiente: '+p.phase);return;}}
-          PRODUCTS.forEach(p=>{stock[p.id]=(stock[p.id]||0)-vals[p.id];st.stock[p.id]=(st.stock[p.id]||0)+vals[p.id];});localStorage.setItem('nectar_stock',JSON.stringify(stock));
+          const enoughLocalStock=PRODUCTS.every(p=>(Number(stock[p.id])||0)>=vals[p.id]);
+          if(enoughLocalStock){
+            remoteStockDelta={}; PRODUCTS.forEach(p=>remoteStockDelta[p.id]=-vals[p.id]);
+            PRODUCTS.forEach(p=>{stock[p.id]=(Number(stock[p.id])||0)-vals[p.id];});
+            localStorage.setItem('nectar_stock',JSON.stringify(stock));
+            stockWasDeducted=true;
+          }else{
+            // El inventario local puede estar desactualizado. Registra la entrega
+            // en consignación, pero no descuentes existencias físicas no verificadas.
+            remoteStockDelta=null;
+            console.warn('Entrega de consigna sin descuento de bodega: stock local insuficiente o no sincronizado.',{requested:vals,localStock:stock});
+          }
+          PRODUCTS.forEach(p=>{st.stock[p.id]=(Number(st.stock[p.id])||0)+vals[p.id];});
           conData.history.unshift({date:new Date().toISOString(),store:st.name,type:'Entrega / reposición',items:vals,detail:total+' costales entregados · Valor '+money(deliveryValue),amount:0});
           if(!st.firstDelivery){
             const advanceInput=dlg.querySelector('#con-first-advance');
@@ -1104,13 +1122,16 @@
           conData.history.unshift({date:new Date().toISOString(),store:st.name,type:'Corte semanal',items:vals,detail:conFormatItems(vals)+' · Ventas '+money(total)+' · Saldo anterior '+money(previousBalance)+' · Pago recibido '+money(paid),amount:paid,sales:total,previousBalance,paid,balance});
         }
         const opId=dlg.dataset.pendingOpId||(dlg.dataset.pendingOpId=nectarOpId());
-        saveBtn.disabled=true;saveBtn.textContent='Guardando en Google Sheets...';
+        saveBtn.disabled=true;saveBtn.textContent='Guardando...';
         try{
           const response=await conPersist(opId,st.id,remoteStockDelta);
           if(!response||!response.ok)throw new Error('El servidor no confirmó el movimiento.');
           dlg.querySelectorAll('input').forEach(input=>{input.value='0';});
-          dlg.remove();renderCatalog();renderStock();conRender();showToast(response.duplicate?'Movimiento ya registrado; datos sincronizados.':'Movimiento de consignación guardado');
+          dlg.remove();renderCatalog();renderStock();conRender();
+          const note=type==='delivery'&&!stockWasDeducted?' Entrega registrada; no se descontó inventario de bodega porque el stock local no está confirmado.':'';
+          showToast((response.duplicate?'Movimiento ya registrado; datos sincronizados.':'Movimiento de consignación guardado')+note);
         }catch(e){
+          console.error('Error al guardar movimiento de consigna:',e);
           stock=beforeStock;conData=beforeCon;localStorage.setItem('nectar_stock',JSON.stringify(stock));conSave();
           saveBtn.disabled=false;saveBtn.textContent='Reintentar con el mismo identificador';
           showToast(e.message+' Se conservará el identificador de esta operación; verifica Sheets antes de volver a intentarlo.');
