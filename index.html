@@ -339,7 +339,9 @@
         <p class="text-[11px] text-neutral-400">El inventario, las ventas y la consignación se consultan y guardan directamente en la hoja central. No necesitas una clave distinta por dispositivo.</p>
         <button onclick="cloudDownload()" id="btn-cloud-down" class="w-full py-2.5 rounded-xl bg-amber-500 text-black font-bold">↻ Actualizar datos desde Google Sheets</button>
 
-        <div class="pt-2 border-t border-neutral-800 space-y-2">
+        <button onclick="hardResetApp()" class="w-full py-2 border border-neutral-700 text-neutral-400 hover:text-amber-400 rounded-xl text-[11px] font-semibold">Restablecer datos locales</button>
+
+      <div class="pt-2 border-t border-neutral-800 space-y-2">
           <span class="text-neutral-400 font-semibold block text-[11px]">Respaldo por Archivo:</span>
           <div class="flex gap-2">
             <button onclick="exportJSON()" class="flex-1 py-1.5 bg-neutral-800 text-neutral-300 rounded-lg text-[11px] font-semibold">Descargar .JSON</button>
@@ -940,6 +942,34 @@
       // mediante NECTAR_API_URL. Evita acceder a un input inexistente.
       const modal = document.getElementById('modal-sync');
       if (modal) modal.classList.remove('hidden');
+    }
+
+    function hardResetApp() {
+      const confirmed = confirm(
+        'Se limpiarán únicamente datos locales de conexión y cachés de NÉCTAR. ' +
+        'Se conservarán inventario, ventas, folios e historial de consignación guardados localmente. ' +
+        'Después se volverá a consultar Google Sheets. ¿Continuar?'
+      );
+      if (!confirmed) return;
+
+      // La URL oficial vive exclusivamente en NECTAR_API_URL, nunca en almacenamiento local.
+      const staleKeyPattern = /(script.?url|api.?url|offline|connection.?state|sync.?state|nectar.?connection)/i;
+      for (const storage of [localStorage, sessionStorage]) {
+        for (let i = storage.length - 1; i >= 0; i--) {
+          const key = storage.key(i);
+          if (key && staleKeyPattern.test(key)) storage.removeItem(key);
+        }
+      }
+
+      if ('caches' in window) {
+        caches.keys().then(names => Promise.all(
+          names.filter(name => /nectar/i.test(name)).map(name => caches.delete(name))
+        )).finally(() => {
+          window.location.replace(window.location.pathname + '?t=' + Date.now());
+        });
+      } else {
+        window.location.replace(window.location.pathname + '?t=' + Date.now());
+      }
     }
 
     function closeSyncModal() {
