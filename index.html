@@ -323,6 +323,7 @@
         <div class="text-center pb-2.5 border-b border-dashed border-neutral-300">
           <h2 class="text-sm font-black tracking-tight uppercase text-black font-sans">NÉCTAR NUTRICIÓN ANIMAL</h2>
           <p class="text-[10px] italic text-neutral-600 font-sans">"Tú pones el maíz, nosotros el resto"</p>
+          <p id="t-document-type" class="hidden text-[10px] font-black text-black mt-1">COTIZACIÓN DE MAYOREO</p>
           <p id="t-date" class="text-[9px] text-neutral-500 mt-1">--/--/---- --:--</p>
           <div class="mt-1.5 inline-block bg-neutral-100 px-2.5 py-0.5 rounded text-xs font-black text-black tracking-wider">
             FOLIO: <span id="t-folio">#NCT-4401</span>
@@ -334,6 +335,7 @@
           <div><span id="t-phone-label" class="font-bold">TELÉFONO:</span> <span id="t-phone">Sin registrar</span></div>
           <div><span id="t-location-label" class="font-bold">ENTREGA:</span> <span id="t-location">Mostrador Bodega</span></div>
           <div><span id="t-method-label" class="font-bold">MÉTODO:</span> <span id="t-method">EFECTIVO</span></div>
+          <div id="t-total-kg-row" class="hidden"><span class="font-bold">KILOGRAMOS TOTALES:</span> <span id="t-total-kg">0.00 kg</span></div>
         </div>
 
         <div class="py-2.5 border-b border-dashed border-neutral-300">
@@ -770,6 +772,12 @@
       document.getElementById('t-location-label').textContent=isWholesale?'LOCALIDAD:':'ENTREGA:';
       document.getElementById('t-method-label').textContent=isWholesale?'NIVEL:':'MÉTODO:';
       document.getElementById('t-method').textContent=isWholesale?(data.wholesaleLevel||'—'):(data.method||'—');
+      const documentTypeEl=document.getElementById('t-document-type');
+      documentTypeEl.textContent=isWholesale?(data.documentType||'MAYOREO'):'';
+      documentTypeEl.classList.toggle('hidden',!isWholesale);
+      const totalKgRow=document.getElementById('t-total-kg-row');
+      totalKgRow.classList.toggle('hidden',!isWholesale);
+      if(isWholesale)document.getElementById('t-total-kg').textContent=Number(data.totalKg||0).toFixed(2)+' kg';
       document.getElementById('t-total-label').textContent=isWholesale?'TOTAL:':'TOTAL PAGADO:';
       document.getElementById('t-total').textContent=wholesaleMoney(data.total);
       const cashBox=document.getElementById('t-cash-box');
@@ -1344,6 +1352,8 @@
       return {
         stock,
         salesHistory,
+        wholesaleHistory,
+        wholesaleDraft,
         folioWeek: localStorage.getItem('nectar_folio_week') || '44',
         folioSeq: localStorage.getItem('nectar_folio_seq') || '0'
       };
@@ -1356,6 +1366,15 @@
       if (data.salesHistory) {
         salesHistory = data.salesHistory;
         localStorage.setItem('nectar_sales_history', JSON.stringify(salesHistory));
+      }
+      if (Array.isArray(data.wholesaleHistory)) {
+        wholesaleHistory=data.wholesaleHistory;
+        localStorage.setItem(WHOLESALE_HISTORY_KEY,JSON.stringify(wholesaleHistory));
+        renderWholesaleHistory();
+      }
+      if (data.wholesaleDraft && typeof data.wholesaleDraft==='object') {
+        wholesaleDraft={...wholesaleDraft,...data.wholesaleDraft};
+        localStorage.setItem(WHOLESALE_DRAFT_KEY,JSON.stringify(wholesaleDraft));
       }
       if (data.folioWeek) localStorage.setItem('nectar_folio_week', data.folioWeek);
       if (data.folioSeq) localStorage.setItem('nectar_folio_seq', data.folioSeq);
@@ -1566,7 +1585,7 @@
     /* INICIALIZACIÓN */
     window.onload = async () => {
       bindSafeControls(); renderCatalog(); renderWholesaleModule();
-      try { await nectarLoadFromSheets(); showToast('✓ Conectado a Google Sheets'); }
+      try { await nectarLoadFromSheets(); updateWholesaleOrder(); showToast('✓ Conectado a Google Sheets'); }
       catch(e) { nectarConnected=false; updateWholesaleOrder(); showToast('Sin conexión a Google Sheets: '+e.message); }
     };
   </script>
