@@ -833,12 +833,30 @@
 
     function buildTicketShareText(s){
       if(s?.isWholesale||String(s?.documentType||'').includes('MAYOREO')){
-        const lines=(s.items||[]).map(it=>it.name+': '+Number(it.quantityKg||0).toFixed(2)+' kg × '+wholesaleMoney(it.pricePerKg)+'/kg = '+wholesaleMoney(it.subtotal));
-        return '🌾 NÉCTAR NUTRICIÓN ANIMAL\\n'+(s.documentType||'MAYOREO')+'\\nFolio: '+s.folio+
-          '\\nCliente: '+(s.client||'Cliente sin nombre')+'\\nLocalidad: '+(s.location||'Sin especificar')+
-          '\\n'+lines.join('\\n')+'\\nTotal: '+wholesaleMoney(s.total)+' MXN\\nGracias por confiar en NÉCTAR Nutrición Animal.';
+        const detail=(s.items||[]).map(it=>
+          it.name+' | '+Number(it.quantityKg||0).toFixed(2)+' kg | '+wholesaleMoney(it.pricePerKg)+'/kg | '+wholesaleMoney(it.subtotal)
+        );
+        return [
+          '🌾 NÉCTAR NUTRICIÓN ANIMAL',
+          'Tú pones el maíz, nosotros el resto.',
+          s.documentType||'MAYOREO',
+          'Folio: '+s.folio,
+          'Fecha: '+(s.date||''),
+          'Cliente: '+(s.client||'Cliente sin nombre'),
+          'WhatsApp: '+(s.phone||'Sin registrar'),
+          'Localidad: '+(s.location||'Sin especificar'),
+          'DETALLE DEL PEDIDO',
+          'Producto | Cantidad | Precio/kg | Importe',
+          ...detail,
+          'Kilogramos totales: '+Number(s.totalKg||0).toFixed(2)+' kg',
+          'Nivel aplicado: '+(s.wholesaleLevel||'—'),
+          'TOTAL: '+wholesaleMoney(s.total)+' MXN',
+          s.observations?'Observaciones: '+s.observations:'',
+          'Gracias por confiar en NÉCTAR Nutrición Animal.'
+        ].filter(Boolean).join('\n');
       }
-      return `🌾 Ticket de compra ${s.folio}\\nNÉCTAR Nutrición Animal. Total: ${s.total.toFixed(2)} MXN`;
+      return ['🌾 Ticket de compra '+s.folio,
+        'NÉCTAR Nutrición Animal. Total: '+wholesaleMoney(s.total)+' MXN'].join('\n');
     }
 
     async function sendWhatsApp() {
@@ -1036,12 +1054,15 @@
       target.innerHTML=table('AVES','AVES','🐥')+table('PORCINOS','PORCINOS','🐷');
     }
     function generateWholesaleFolio(){
-      const week=getISOWeek(),year=new Date().getFullYear();
-      const keyWeek='nectar_wh_folio_week',keySeq='nectar_wh_folio_seq';
-      const period=year+'-'+week;
-      let seq=localStorage.getItem(keyWeek)===period?parseInt(localStorage.getItem(keySeq)||'0',10)+1:1;
-      localStorage.setItem(keyWeek,period);localStorage.setItem(keySeq,String(seq));
-      return '#COT-'+year+String(week).padStart(2,'0')+'-'+String(seq).padStart(3,'0');
+      const year=new Date().getFullYear(),week=String(getISOWeek()).padStart(2,'0');
+      let token='';
+      if(window.crypto&&typeof window.crypto.randomUUID==='function'){
+        token=window.crypto.randomUUID().replace(/-/g,'').slice(0,12).toUpperCase();
+      }else{
+        token=Date.now().toString(36).toUpperCase()+Math.random().toString(36).slice(2,10).toUpperCase();
+      }
+      // Las cotizaciones tienen prefijo propio; no comparten secuencia con folios de venta #NCT.
+      return '#COT-'+year+week+'-'+token;
     }
     function wholesaleDateString(){
       const now=new Date();
@@ -1195,7 +1216,7 @@
         if(wholesalePending){
           sale=wholesalePending.sale;
           opId=wholesalePending.opId;
-          const retryOk=confirm('Hay una venta con resultado pendiente. Reintentar exactamente la misma operación con el mismo folio e identificador?\\n'+sale.folio+' · '+wholesaleMoney(sale.total));
+          const retryOk=confirm('Hay una venta con resultado pendiente. Reintentar exactamente la misma operación con el mismo folio e identificador?\n'+sale.folio+' · '+wholesaleMoney(sale.total));
           if(!retryOk)return;
         }else{
           // Relee el inventario central inmediatamente antes de validar la salida.
@@ -1218,8 +1239,9 @@
               return;
             }
           }
-          sale=buildWholesaleSale(freshCalc,generateNextFolio());
-          const confirmSale=confirm('¿Confirmas registrar la VENTA DE MAYOREO?\\n\\nCliente: '+sale.client+'\\nCantidad: '+sale.totalKg.toFixed(2)+' kg\\nNivel: '+sale.wholesaleLevel+'\\nTotal: '+wholesaleMoney(sale.total)+'\\n\\nSe descontará inventario convertido a equivalentes de bolsa.');
+          const provisionalId='MAY-PEND-'+(window.crypto&&typeof window.crypto.randomUUID==='function'?window.crypto.randomUUID():Date.now().toString(36)+'-'+Math.random().toString(36).slice(2));
+          sale=buildWholesaleSale(freshCalc,'#'+provisionalId);
+          const confirmSale=confirm('¿Confirmas registrar la VENTA DE MAYOREO?\n\nCliente: '+sale.client+'\nCantidad: '+sale.totalKg.toFixed(2)+' kg\nNivel: '+sale.wholesaleLevel+'\nTotal: '+wholesaleMoney(sale.total)+'\n\nEl folio definitivo #NCT será asignado por Google Sheets.\nSe descontará inventario convertido a equivalentes decimales de bolsa.');
           if(!confirmSale)return;
           opId=nectarOpId();
           wholesalePending={opId,sale};
