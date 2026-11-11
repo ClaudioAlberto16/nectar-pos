@@ -759,37 +759,48 @@
     }
 
     function showTicket(data) {
-      document.getElementById('t-folio').textContent = data.folio;
-      document.getElementById('t-date').textContent = data.date;
-      document.getElementById('t-client').textContent = data.client;
-      document.getElementById('t-phone').textContent = data.phone;
-      document.getElementById('t-location').textContent = data.location;
-      document.getElementById('t-method').textContent = data.method;
-      document.getElementById('t-total').textContent = `$${data.total.toFixed(2)}`;
-
-      const cashBox = document.getElementById('t-cash-box');
-      if (data.method === 'EFECTIVO') {
+      const isWholesale=!!(data.isWholesale||String(data.documentType||'').includes('MAYOREO'));
+      document.getElementById('t-ticket-heading').textContent=isWholesale?(data.isQuote?'✓ COTIZACIÓN GENERADA':'✓ VENTA DE MAYOREO REGISTRADA'):'✓ TICKET EMITIDO';
+      document.getElementById('t-folio').textContent=data.folio;
+      document.getElementById('t-date').textContent=data.date;
+      document.getElementById('t-client').textContent=data.client||'Cliente sin nombre';
+      document.getElementById('t-phone').textContent=data.phone||'Sin registrar';
+      document.getElementById('t-location').textContent=data.location||'Sin especificar';
+      document.getElementById('t-phone-label').textContent=isWholesale?'WHATSAPP:':'TELÉFONO:';
+      document.getElementById('t-location-label').textContent=isWholesale?'LOCALIDAD:':'ENTREGA:';
+      document.getElementById('t-method-label').textContent=isWholesale?'NIVEL:':'MÉTODO:';
+      document.getElementById('t-method').textContent=isWholesale?(data.wholesaleLevel||'—'):(data.method||'—');
+      document.getElementById('t-total-label').textContent=isWholesale?'TOTAL:':'TOTAL PAGADO:';
+      document.getElementById('t-total').textContent=wholesaleMoney(data.total);
+      const cashBox=document.getElementById('t-cash-box');
+      if(isWholesale||data.method!=='EFECTIVO')cashBox.classList.add('hidden');
+      else{
         cashBox.classList.remove('hidden');
-        document.getElementById('t-cash-info').textContent = `$${data.cashReceived.toFixed(2)} / $${data.change.toFixed(2)}`;
-      } else {
-        cashBox.classList.add('hidden');
+        document.getElementById('t-cash-info').textContent=wholesaleMoney(data.cashReceived)+' / '+wholesaleMoney(data.change);
       }
-
-      const container = document.getElementById('t-items');
-      container.innerHTML = '';
-      data.items.forEach(it => {
-        const row = document.createElement('div');
-        row.className = "flex justify-between items-start text-[10px]";
-        row.innerHTML = `
-          <div>
-            <div class="font-bold text-black">${it.qty}x ${it.name}</div>
-            <div class="text-[8.5px] text-neutral-500">(Bolsa ${it.bag} • rinde ${it.yieldKg})</div>
-          </div>
-          <div class="font-bold text-black font-mono">$${it.subtotal.toFixed(2)}</div>
-        `;
+      const container=document.getElementById('t-items');
+      container.innerHTML='';
+      (data.items||[]).forEach(it=>{
+        const row=document.createElement('div');
+        row.className="flex justify-between items-start text-[10px]";
+        if(isWholesale){
+          row.innerHTML='<div class="min-w-0 pr-2"><div class="font-bold text-black">'+conEsc(it.name)+'</div>'+
+            '<div class="text-[8.5px] text-neutral-500">'+Number(it.quantityKg||0).toFixed(2)+' kg × '+wholesaleMoney(it.pricePerKg)+' / kg</div></div>'+
+            '<div class="font-bold text-black font-mono whitespace-nowrap">'+wholesaleMoney(it.subtotal)+'</div>';
+        }else{
+          row.innerHTML='<div><div class="font-bold text-black">'+it.qty+'x '+conEsc(it.name)+'</div>'+
+            '<div class="text-[8.5px] text-neutral-500">(Bolsa '+conEsc(it.bag)+' • rinde '+conEsc(it.yieldKg)+')</div></div>'+
+            '<div class="font-bold text-black font-mono">'+wholesaleMoney(it.subtotal)+'</div>';
+        }
         container.appendChild(row);
       });
-
+      const notes=document.getElementById('t-ticket-heading');
+      if(isWholesale&&data.observations){
+        const note=document.createElement('div');
+        note.className='pt-2 text-[9px] text-neutral-600';
+        note.textContent='OBSERVACIONES: '+data.observations;
+        container.appendChild(note);
+      }
       document.getElementById('modal-ticket').classList.remove('hidden');
     }
 
@@ -805,6 +816,16 @@
       return new Promise(res => canvas.toBlob(res, 'image/png'));
     }
 
+    function buildTicketShareText(s){
+      if(s?.isWholesale||String(s?.documentType||'').includes('MAYOREO')){
+        const lines=(s.items||[]).map(it=>it.name+': '+Number(it.quantityKg||0).toFixed(2)+' kg × '+wholesaleMoney(it.pricePerKg)+'/kg = '+wholesaleMoney(it.subtotal));
+        return '🌾 NÉCTAR NUTRICIÓN ANIMAL\\n'+(s.documentType||'MAYOREO')+'\\nFolio: '+s.folio+
+          '\\nCliente: '+(s.client||'Cliente sin nombre')+'\\nLocalidad: '+(s.location||'Sin especificar')+
+          '\\n'+lines.join('\\n')+'\\nTotal: '+wholesaleMoney(s.total)+' MXN\\nGracias por confiar en NÉCTAR Nutrición Animal.';
+      }
+      return `🌾 Ticket de compra ${s.folio}\\nNÉCTAR Nutrición Animal. Total: ${s.total.toFixed(2)} MXN`;
+    }
+
     async function sendWhatsApp() {
       if (!currentSale) return;
       const s = currentSale;
@@ -812,8 +833,8 @@
       const orig = btn.innerHTML;
       btn.innerHTML = "Generando...";
 
-      // TEXTO CORTO SOLICITADO
-      const shortText = `🌾 Ticket de compra ${s.folio}\nNÉCTAR Nutrición Animal. Total: $${s.total.toFixed(2)} MXN`;
+      // Conserva el mecanismo actual (imagen + Web Share API / fallback a WhatsApp).
+      const shortText = buildTicketShareText(s);
 
       try {
         const blob = await generateImageBlob();
@@ -828,7 +849,7 @@
           if (navigator.canShare({ files: [file] })) {
             await navigator.share({
               files: [file],
-              title: `Ticket ${s.folio}`,
+              title: `${s.documentType||'Ticket'} ${s.folio}`,
               text: shortText
             });
             showToast("✓ Imagen compartida");
@@ -889,7 +910,7 @@
 
     function copyShortText() {
       if (!currentSale) return;
-      const txt = `🌾 Ticket de compra ${currentSale.folio}\nNÉCTAR Nutrición Animal. Total: $${currentSale.total.toFixed(2)} MXN`;
+      const txt = buildTicketShareText(currentSale);
       navigator.clipboard.writeText(txt).then(() => {
         showToast("✓ Texto copiado al portapapeles");
       });
@@ -931,27 +952,282 @@
       btnCopy.addEventListener('touchend', (e) => { e.preventDefault(); copyShortText(); });
     }
 
+    /* MÓDULO DE MAYOREO: cotización local y venta integrada al flujo normal */
+    const wholesaleRound2 = n => Math.round((Number(n)||0)*100)/100;
+    const wholesaleRound6 = n => Math.round((Number(n)||0)*1000000)/1000000;
+    const wholesaleMoney = n => new Intl.NumberFormat('es-MX',{style:'currency',currency:'MXN',minimumFractionDigits:2,maximumFractionDigits:2}).format(Number(n)||0);
+    function wholesaleBagKg(product){
+      const m=String(product?.bag||'').match(/[0-9]+(?:\.[0-9]+)?/);
+      return m?Number(m[0]):NaN;
+    }
+    function calculateWholesale(quantities){
+      const products=Object.entries(WHOLESALE_CONFIG.products).map(([id,cfg])=>{
+        const product=PRODUCTS.find(p=>p.id===id);
+        const kg=Math.max(0,wholesaleRound2(quantities?.[id]||0));
+        return {id,product,cfg,kg,bagKg:wholesaleBagKg(product)};
+      }).filter(x=>x.product&&x.kg>0);
+      const totalKg=wholesaleRound2(products.reduce((sum,x)=>sum+x.kg,0));
+      const tier=totalKg>=WHOLESALE_CONFIG.tier2.minKg?WHOLESALE_CONFIG.tier2:
+        totalKg>=WHOLESALE_CONFIG.minimumKg?WHOLESALE_CONFIG.tier1:null;
+      const lines=products.map(x=>{
+        const pricePerKg=tier?(tier.id==='mayoreo2'?x.cfg.bulkPrice:x.cfg.bagPrice):null;
+        const subtotal=pricePerKg===null?null:wholesaleRound2(x.kg*pricePerKg);
+        return {...x,pricePerKg,subtotal,inventoryQty: x.bagKg>0?wholesaleRound6(x.kg/x.bagKg):NaN};
+      });
+      const total=tier?wholesaleRound2(lines.reduce((sum,x)=>sum+(x.subtotal||0),0)):null;
+      return {lines,totalKg,tier,total};
+    }
+    function saveWholesaleDraft(){
+      const fields={client:'wh-client',phone:'wh-phone',locality:'wh-locality',observations:'wh-observations'};
+      Object.entries(fields).forEach(([key,id])=>{const el=document.getElementById(id);if(el)wholesaleDraft[key]=el.value;});
+      const quantities={};
+      Object.keys(WHOLESALE_CONFIG.products).forEach(id=>{
+        const el=document.getElementById('wh-qty-'+id);
+        quantities[id]=el?Math.max(0,wholesaleRound2(parseFloat(el.value)||0)):Math.max(0,wholesaleRound2(wholesaleDraft.quantities?.[id]||0));
+      });
+      wholesaleDraft.quantities=quantities;
+      try{localStorage.setItem(WHOLESALE_DRAFT_KEY,JSON.stringify(wholesaleDraft));}catch(e){console.warn('No se pudo guardar el borrador de mayoreo:',e);}
+    }
+    function invalidateWholesalePending(){
+      const btn=document.getElementById('wh-generate-btn');
+      if(btn&&!btn.disabled){delete btn.dataset.pendingOpId;delete btn.dataset.pendingSale;}
+    }
+    function renderWholesaleProductInputs(){
+      ['aves','porcinos'].forEach(line=>{
+        const target=document.getElementById('wholesale-products-'+line);
+        if(!target)return;
+        const ids=Object.keys(WHOLESALE_CONFIG.products).filter(id=>WHOLESALE_CONFIG.products[id].line===line.toUpperCase());
+        target.innerHTML=ids.map(id=>{
+          const p=PRODUCTS.find(x=>x.id===id),cfg=WHOLESALE_CONFIG.products[id],qty=wholesaleDraft.quantities?.[id]||'';
+          return '<div class="flex items-center justify-between gap-3 border-b border-neutral-800 py-2">'+
+            '<div class="min-w-0"><div class="text-xs font-semibold text-white">'+conEsc(cfg.label)+'</div>'+
+            '<div class="text-[10px] text-neutral-500">Presentación actual: '+conEsc(p.bag)+' de concentrado</div></div>'+
+            '<div class="flex items-center gap-2 shrink-0"><input id="wh-qty-'+id+'" data-wholesale-qty="'+id+'" type="number" min="0" step="0.01" inputmode="decimal" value="'+(qty||'')+'" placeholder="0 kg" class="w-24 bg-neutral-950 border border-neutral-700 rounded-lg px-2 py-2 text-right text-sm text-white">'+
+            '<span class="text-[10px] text-neutral-500">kg</span></div></div>';
+        }).join('');
+        target.querySelectorAll('[data-wholesale-qty]').forEach(input=>input.addEventListener('input',()=>{invalidateWholesalePending();updateWholesaleOrder();}));
+      });
+    }
+    function renderWholesalePolicy(){
+      const target=document.getElementById('wholesale-policy-content');
+      if(!target)return;
+      const table=(line,label,icon)=>{
+        const rows=Object.entries(WHOLESALE_CONFIG.products).filter(([,v])=>v.line===line).map(([id,v])=>
+          '<tr class="border-t border-neutral-800"><td class="py-2 pr-2">'+conEsc(v.label)+'</td><td class="text-right px-1">'+wholesaleMoney(v.bagPrice)+'</td><td class="text-right pl-1">'+wholesaleMoney(v.bulkPrice)+'</td></tr>').join('');
+        return '<div class="bg-neutral-900 border border-neutral-800 rounded-2xl p-3"><h3 class="font-bold text-sm mb-2">'+icon+' '+label+'</h3>'+
+          '<table class="w-full text-[11px]"><thead class="text-neutral-500"><tr><th class="text-left pb-2">Producto / kg</th><th class="text-right pb-2">M1</th><th class="text-right pb-2">M2</th></tr></thead><tbody>'+rows+'</tbody></table></div>';
+      };
+      target.innerHTML=table('AVES','AVES','🐥')+table('PORCINOS','PORCINOS','🐷');
+    }
+    function generateWholesaleFolio(){
+      const week=getISOWeek(),year=new Date().getFullYear();
+      const keyWeek='nectar_wh_folio_week',keySeq='nectar_wh_folio_seq';
+      const period=year+'-'+week;
+      let seq=localStorage.getItem(keyWeek)===period?parseInt(localStorage.getItem(keySeq)||'0',10)+1:1;
+      localStorage.setItem(keyWeek,period);localStorage.setItem(keySeq,String(seq));
+      return '#COT-'+year+String(week).padStart(2,'0')+'-'+String(seq).padStart(3,'0');
+    }
+    function wholesaleDateString(){
+      const now=new Date();
+      return now.toLocaleDateString('es-MX',{day:'2-digit',month:'2-digit',year:'numeric'})+' '+now.toLocaleTimeString('es-MX',{hour:'2-digit',minute:'2-digit',hour12:true});
+    }
+    function persistWholesaleHistory(record){
+      const index=wholesaleHistory.findIndex(x=>x.folio===record.folio);
+      if(index>=0)wholesaleHistory[index]=record;else wholesaleHistory.unshift(record);
+      wholesaleHistory=wholesaleHistory.slice(0,300);
+      try{localStorage.setItem(WHOLESALE_HISTORY_KEY,JSON.stringify(wholesaleHistory));}
+      catch(e){console.error('No se pudo guardar historial de mayoreo:',e);showToast('No se pudo guardar el historial local. Exporta la información y libera espacio.');}
+      renderWholesaleHistory();
+    }
+    function renderWholesaleHistory(){
+      const list=document.getElementById('wholesale-history');
+      const count=document.getElementById('wh-history-count');
+      if(!list)return;
+      if(count)count.textContent=wholesaleHistory.length+' operaciones';
+      if(!wholesaleHistory.length){list.innerHTML='<p class="text-xs text-neutral-500 text-center py-4">Todavía no hay cotizaciones ni ventas de mayoreo.</p>';return;}
+      list.innerHTML=wholesaleHistory.map((r,i)=>
+        '<div class="bg-neutral-950 border border-neutral-800 rounded-xl p-3 flex justify-between items-center gap-2">'+
+        '<div class="min-w-0"><div class="flex flex-wrap items-center gap-2"><b class="text-xs text-amber-400">'+conEsc(r.folio)+'</b><span class="text-[9px] px-2 py-0.5 rounded-full '+(r.isQuote?'bg-sky-500/10 text-sky-300':'bg-emerald-500/10 text-emerald-300')+'">'+(r.isQuote?'COTIZACIÓN':'VENTA')+'</span></div>'+
+        '<p class="text-xs mt-1">'+conEsc(r.client||'Cliente sin nombre')+' · '+Number(r.totalKg||0).toFixed(2)+' kg</p>'+
+        '<p class="text-[10px] text-neutral-500">'+conEsc(r.date||'')+' · '+conEsc(r.wholesaleLevel||'Sin nivel')+' · '+conEsc(r.status||'')+'</p></div>'+
+        '<div class="text-right shrink-0"><b class="text-xs">'+wholesaleMoney(r.total)+'</b><button type="button" data-wholesale-folio="'+conEsc(r.folio)+'" class="block text-[10px] text-amber-400 underline mt-1 ml-auto">Ver comprobante</button></div></div>'
+      ).join('');
+      list.querySelectorAll('[data-wholesale-folio]').forEach(btn=>btn.addEventListener('click',()=>viewWholesaleRecord(btn.dataset.wholesaleFolio)));
+    }
+    function viewWholesaleRecord(folio){
+      const record=wholesaleHistory.find(x=>x.folio===folio);
+      if(!record)return;
+      currentSale=record;
+      showTicket(record);
+    }
+    function updateWholesaleOrder(){
+      saveWholesaleDraft();
+      const calc=calculateWholesale(wholesaleDraft.quantities);
+      const totalEl=document.getElementById('wh-total-kg');
+      if(totalEl)totalEl.textContent=calc.totalKg.toFixed(2)+' kg';
+      const levelEl=document.getElementById('wh-level');
+      if(levelEl)levelEl.textContent=calc.tier?calc.tier.label:'Sin nivel';
+      const warning=document.getElementById('wh-minimum-warning');
+      if(warning)warning.classList.toggle('hidden',calc.totalKg<=0||!!calc.tier);
+      const body=document.getElementById('wh-order-lines');
+      if(body){
+        body.innerHTML=calc.lines.length?calc.lines.map(x=>
+          '<tr class="border-b border-neutral-800"><td class="py-2 pr-1">'+conEsc(x.cfg.label)+'</td>'+
+          '<td class="text-right">'+x.kg.toFixed(2)+'</td>'+
+          '<td class="text-right">'+(x.pricePerKg===null?'—':wholesaleMoney(x.pricePerKg))+'</td>'+
+          '<td class="text-right">'+(x.subtotal===null?'—':wholesaleMoney(x.subtotal))+'</td>'+
+          '<td class="text-right pl-1"><button type="button" onclick="removeWholesaleProduct(\''+x.id+'\')" class="text-red-400 px-1" title="Quitar producto">×</button></td></tr>'
+        ).join(''):'<tr><td colspan="5" class="text-center py-4 text-neutral-500">Agrega kg a uno o varios productos.</td></tr>';
+      }
+      const total=document.getElementById('wh-order-total');
+      if(total)total.textContent=calc.total===null?(calc.totalKg>0?'Requiere 40 kg':wholesaleMoney(0)):wholesaleMoney(calc.total);
+      const doc=document.getElementById('wh-document-type')?.value||'quote';
+      const btn=document.getElementById('wh-generate-btn');
+      const note=document.getElementById('wh-action-note');
+      if(btn){btn.disabled=!calc.tier||!calc.lines.length||(doc==='sale'&&!nectarConnected);btn.textContent=doc==='sale'?'REGISTRAR VENTA DE MAYOREO':'GENERAR COTIZACIÓN';}
+      if(note)note.textContent=doc==='sale'?(nectarConnected?'Se verificará el inventario en Google Sheets antes de registrar la venta.':'Conecta con Google Sheets para verificar inventario y registrar ventas.'):'La cotización se guarda en este dispositivo; no registra venta ni modifica inventario.';
+    }
+    function removeWholesaleProduct(id){
+      const input=document.getElementById('wh-qty-'+id);
+      if(input)input.value='';
+      invalidateWholesalePending();updateWholesaleOrder();
+    }
+    function renderWholesaleModule(){
+      const fields={client:'wh-client',phone:'wh-phone',locality:'wh-locality',observations:'wh-observations'};
+      Object.entries(fields).forEach(([key,id])=>{const el=document.getElementById(id);if(el){el.value=wholesaleDraft[key]||'';el.addEventListener('input',()=>{invalidateWholesalePending();updateWholesaleOrder();});}});
+      renderWholesaleProductInputs();
+      renderWholesalePolicy();
+      const selector=document.getElementById('wh-document-type');
+      if(selector)selector.addEventListener('change',()=>{invalidateWholesalePending();updateWholesaleOrder();});
+      updateWholesaleOrder();
+      renderWholesaleHistory();
+    }
+    function buildWholesaleSale(calc,folio){
+      const items=calc.lines.map(x=>{
+        const equivalentBags=x.inventoryQty;
+        const pricePerBag=wholesaleRound2(x.pricePerKg*x.bagKg);
+        return {
+          id:x.id,name:x.cfg.label,bag:x.product.bag,yieldKg:x.product.yieldKg,
+          qty:equivalentBags,price:pricePerBag,subtotal:x.subtotal,
+          quantityKg:x.kg,pricePerKg:x.pricePerKg,inventoryQtyBags:equivalentBags,
+          inventoryUnit:'bolsa_equivalente'
+        };
+      });
+      return {
+        folio,date:wholesaleDateString(),client:wholesaleDraft.client.trim()||'Cliente sin nombre',
+        phone:wholesaleDraft.phone.trim()||'Sin registrar',location:wholesaleDraft.locality.trim()||'Sin especificar',
+        method:'MAYOREO',items,total:calc.total,cashReceived:calc.total,change:0,
+        isWholesale:true,isQuote:false,documentType:'VENTA DE MAYOREO',
+        totalKg:calc.totalKg,wholesaleLevel:calc.tier.label,
+        observations:wholesaleDraft.observations.trim(),status:'Pendiente de sincronización'
+      };
+    }
+    function buildWholesaleQuote(calc){
+      return {
+        folio:generateWholesaleFolio(),date:wholesaleDateString(),
+        client:wholesaleDraft.client.trim()||'Cliente sin nombre',phone:wholesaleDraft.phone.trim()||'Sin registrar',
+        location:wholesaleDraft.locality.trim()||'Sin especificar',method:'COTIZACIÓN',
+        items:calc.lines.map(x=>({id:x.id,name:x.cfg.label,bag:x.product.bag,yieldKg:x.product.yieldKg,
+          qty:x.inventoryQty,price:wholesaleRound2(x.pricePerKg*x.bagKg),subtotal:x.subtotal,
+          quantityKg:x.kg,pricePerKg:x.pricePerKg,inventoryQtyBags:x.inventoryQty,inventoryUnit:'bolsa_equivalente'})),
+        total:calc.total,isWholesale:true,isQuote:true,documentType:'COTIZACIÓN DE MAYOREO',
+        totalKg:calc.totalKg,wholesaleLevel:calc.tier.label,
+        observations:wholesaleDraft.observations.trim(),status:'Cotización guardada en este dispositivo'
+      };
+    }
+    function addWholesaleSaleToLocalHistory(sale){
+      if(!salesHistory.some(x=>x.folio===sale.folio)){
+        salesHistory.unshift(sale);
+        localStorage.setItem('nectar_sales_history',JSON.stringify(salesHistory));
+      }
+    }
+    async function generateWholesaleDocument(){
+      const btn=document.getElementById('wh-generate-btn');
+      if(!btn||btn.disabled||btn.dataset.sending==='1')return;
+      saveWholesaleDraft();
+      const calc=calculateWholesale(wholesaleDraft.quantities);
+      if(!calc.tier||!calc.lines.length){showToast('El pedido debe sumar al menos 40 kg para aplicar mayoreo.');return;}
+      const mode=document.getElementById('wh-document-type')?.value||'quote';
+      if(mode==='quote'){
+        const quote=buildWholesaleQuote(calc);
+        persistWholesaleHistory(quote);
+        currentSale=quote;
+        showTicket(quote);
+        showToast('Cotización guardada. No se modificó el inventario.');
+        return;
+      }
+      if(!nectarConnected){showToast('Conecta con Google Sheets antes de registrar una venta de mayoreo.');return;}
+      let sale;
+      let opId;
+      if(btn.dataset.pendingSale&&btn.dataset.pendingOpId){
+        try{sale=JSON.parse(btn.dataset.pendingSale);opId=btn.dataset.pendingOpId;}
+        catch(e){delete btn.dataset.pendingSale;delete btn.dataset.pendingOpId;}
+      }
+      if(!sale){
+        // Actualiza stock desde el origen central justo antes de validar la venta.
+        try{await nectarLoadFromSheets();}catch(err){showToast('No se pudo verificar el inventario central: '+err.message);return;}
+        const refreshedCalc=calculateWholesale(wholesaleDraft.quantities);
+        for(const line of refreshedCalc.lines){
+          if(!Number.isFinite(line.bagKg)||line.bagKg<=0){showToast('No se puede convertir de forma segura la presentación de '+line.cfg.label+' a kg.');return;}
+          const availableBags=Number(stock[line.id])||0;
+          const availableKg=wholesaleRound2(availableBags*line.bagKg);
+          if(availableBags+0.000001<line.inventoryQty){
+            showToast('Stock insuficiente de '+line.cfg.label+': solicitas '+line.kg.toFixed(2)+' kg; disponibles '+availableKg.toFixed(2)+' kg ('+availableBags.toFixed(3)+' bolsas equivalentes).');
+            return;
+          }
+        }
+        sale=buildWholesaleSale(refreshedCalc,generateNextFolio());
+        const ok=confirm('¿Confirmas registrar la VENTA DE MAYOREO?\n\nCliente: '+sale.client+'\nCantidad: '+sale.totalKg.toFixed(2)+' kg\nNivel: '+sale.wholesaleLevel+'\nTotal: '+wholesaleMoney(sale.total)+'\n\nSe descontará inventario convertido a equivalentes de bolsa.');
+        if(!ok)return;
+        opId=nectarOpId();
+        btn.dataset.pendingSale=JSON.stringify(sale);btn.dataset.pendingOpId=opId;
+      } else {
+        const ok=confirm('Reintentar exactamente la misma venta con el mismo identificador?\n'+sale.folio+' · '+wholesaleMoney(sale.total));
+        if(!ok)return;
+      }
+      btn.dataset.sending='1';btn.disabled=true;btn.textContent='REGISTRANDO...';
+      const controls=document.querySelectorAll('#view-wholesale input,#view-wholesale textarea,#view-wholesale select');
+      controls.forEach(el=>el.disabled=true);
+      try{
+        const response=await nectarRequest('write',{type:'sale',opId,sale});
+        if(!response?.result||!response.result.stock)throw new Error('El servidor no devolvió las existencias actualizadas. Verifica el folio en Google Sheets antes de reintentar.');
+        stock=response.result.stock;localStorage.setItem('nectar_stock',JSON.stringify(stock));
+        const serverSale=response.result.sale||sale;
+        currentSale={...sale,...serverSale,isWholesale:true,isQuote:false,documentType:'VENTA DE MAYOREO'};
+        addWholesaleSaleToLocalHistory(currentSale);
+        persistWholesaleHistory({...currentSale,status:'Registrada en Google Sheets'});
+        delete btn.dataset.pendingSale;delete btn.dataset.pendingOpId;
+        renderCatalog();renderStock();renderHistory();
+        showTicket(currentSale);
+        showToast('Venta de mayoreo registrada y sincronizada.');
+      }catch(err){
+        console.error('Error al registrar venta de mayoreo:',err);
+        showToast(err.message+' Conservamos el mismo identificador; verifica Sheets antes de repetir.');
+        btn.textContent='REINTENTAR VENTA';
+      }finally{
+        btn.dataset.sending='0';btn.disabled=false;
+        controls.forEach(el=>el.disabled=false);
+        if(!btn.dataset.pendingSale)updateWholesaleOrder();
+      }
+    }
+
     /* 9. VISTAS: STOCK E HISTORIAL */
     function switchView(v) {
-      document.getElementById('view-pos').classList.add('hidden');
-      document.getElementById('view-inv').classList.add('hidden');
-      document.getElementById('view-his').classList.add('hidden');
-
-      ['pos', 'inv', 'his'].forEach(id => {
-        document.getElementById(`nav-btn-${id}`).className = "px-2.5 py-1.5 rounded-lg text-neutral-400 hover:text-white transition";
+      ['pos','inv','his','con','mayoreo','wholesale'].forEach(id=>{
+        const view=document.getElementById('view-'+id);
+        const nav=document.getElementById('nav-btn-'+id);
+        if(view)view.classList.add('hidden');
+        if(nav)nav.className="shrink-0 px-2.5 py-1.5 rounded-lg text-neutral-400 hover:text-white transition";
       });
-
-      document.getElementById(`nav-btn-${v}`).className = "px-2.5 py-1.5 rounded-lg bg-amber-500 text-black font-bold transition";
-
-      if (v === 'pos') {
-        document.getElementById('view-pos').classList.remove('hidden');
-      } else if (v === 'inv') {
-        document.getElementById('view-inv').classList.remove('hidden');
-        renderStock();
-      } else if (v === 'his') {
-        document.getElementById('view-his').classList.remove('hidden');
-        renderHistory();
-      }
+      const target=document.getElementById('view-'+v);
+      const activeNav=document.getElementById('nav-btn-'+v);
+      if(target)target.classList.remove('hidden');
+      if(activeNav)activeNav.className="shrink-0 px-2.5 py-1.5 rounded-lg bg-amber-500 text-black font-bold transition";
+      if(v==='inv')renderStock();
+      else if(v==='his')renderHistory();
+      else if(v==='con')conRender();
+      else if(v==='mayoreo'){renderWholesalePolicy();renderWholesaleHistory();}
+      else if(v==='wholesale')updateWholesaleOrder();
     }
 
     function renderStock() {
@@ -1289,9 +1565,9 @@
 
     /* INICIALIZACIÓN */
     window.onload = async () => {
-      bindSafeControls(); renderCatalog();
+      bindSafeControls(); renderCatalog(); renderWholesaleModule();
       try { await nectarLoadFromSheets(); showToast('✓ Conectado a Google Sheets'); }
-      catch(e) { nectarConnected=false; showToast('Sin conexión a Google Sheets: '+e.message); }
+      catch(e) { nectarConnected=false; updateWholesaleOrder(); showToast('Sin conexión a Google Sheets: '+e.message); }
     };
   </script>
 </body>
