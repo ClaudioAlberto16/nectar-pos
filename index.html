@@ -193,6 +193,7 @@
         <div class="overflow-x-auto"><table class="w-full text-[11px]"><thead class="text-neutral-500 border-b border-neutral-700"><tr><th class="text-left py-2">Producto</th><th class="text-right">Kg</th><th class="text-right">Precio/kg</th><th class="text-right">Importe</th><th></th></tr></thead><tbody id="wh-order-lines"></tbody></table></div>
         <div class="border-t border-neutral-700 pt-3 flex justify-between items-center"><span class="font-bold">TOTAL DE LA ORDEN</span><b id="wh-order-total" class="text-2xl text-amber-400 font-mono">$0.00</b></div>
         <div class="space-y-2">
+          <div id="wh-pending-alert" class="hidden rounded-lg border border-amber-500/40 bg-amber-500/10 text-amber-300 p-2 text-xs">Hay una venta de mayoreo con resultado pendiente. Reintenta con el mismo folio e identificador o verifica primero el historial central. Los datos de la orden están bloqueados para evitar duplicados.</div>
           <label class="block text-xs text-neutral-400">Documento que deseas generar</label>
           <select id="wh-document-type" class="w-full bg-neutral-950 border border-neutral-700 rounded-xl px-3 py-2 text-white"><option value="quote">COTIZACIÓN</option><option value="sale">VENTA DE MAYOREO</option></select>
           <button id="wh-generate-btn" onclick="generateWholesaleDocument()" class="w-full py-3 rounded-xl bg-amber-500 text-black font-black text-xs disabled:opacity-40">GENERAR COTIZACIÓN</button>
@@ -453,6 +454,7 @@
     });
     const WHOLESALE_HISTORY_KEY = 'nectar_wholesale_history_v1';
     const WHOLESALE_DRAFT_KEY = 'nectar_wholesale_draft_v1';
+    const WHOLESALE_PENDING_KEY = 'nectar_wholesale_pending_v1';
 
     /* 2. CONEXIÓN CENTRAL A GOOGLE SHEETS */
     // Pega aquí la URL del despliegue de Apps Script cuando esté publicado.
@@ -497,6 +499,11 @@
       const savedWholesaleDraft = JSON.parse(localStorage.getItem(WHOLESALE_DRAFT_KEY) || 'null');
       if (savedWholesaleDraft && typeof savedWholesaleDraft === 'object') wholesaleDraft = {...wholesaleDraft,...savedWholesaleDraft};
     } catch (e) { console.warn('No se pudo leer el borrador local de mayoreo:', e); }
+    let wholesalePending = null;
+    try {
+      const savedPending = JSON.parse(localStorage.getItem(WHOLESALE_PENDING_KEY) || 'null');
+      if (savedPending && savedPending.opId && savedPending.sale) wholesalePending = savedPending;
+    } catch (e) { console.warn('No se pudo leer la venta de mayoreo pendiente:', e); }
 
     /* 3. FOLIOS POR SEMANA ISO */
     function getISOWeek() {
@@ -997,6 +1004,7 @@
       try{localStorage.setItem(WHOLESALE_DRAFT_KEY,JSON.stringify(wholesaleDraft));}catch(e){console.warn('No se pudo guardar el borrador de mayoreo:',e);}
     }
     function invalidateWholesalePending(){
+      if(wholesalePending)return;
       const btn=document.getElementById('wh-generate-btn');
       if(btn&&!btn.disabled){delete btn.dataset.pendingOpId;delete btn.dataset.pendingSale;}
     }
@@ -1092,8 +1100,19 @@
       const doc=document.getElementById('wh-document-type')?.value||'quote';
       const btn=document.getElementById('wh-generate-btn');
       const note=document.getElementById('wh-action-note');
-      if(btn){btn.disabled=!calc.tier||!calc.lines.length||(doc==='sale'&&!nectarConnected);btn.textContent=doc==='sale'?'REGISTRAR VENTA DE MAYOREO':'GENERAR COTIZACIÓN';}
-      if(note)note.textContent=doc==='sale'?(nectarConnected?'Se verificará el inventario en Google Sheets antes de registrar la venta.':'Conecta con Google Sheets para verificar inventario y registrar ventas.'):'La cotización se guarda en este dispositivo; no registra venta ni modifica inventario.';
+      const pending=!!wholesalePending;
+      if(btn){
+        btn.disabled=!calc.tier||!calc.lines.length||(doc==='sale'&&!nectarConnected);
+        btn.textContent=pending?'REINTENTAR VENTA PENDIENTE':(doc==='sale'?'REGISTRAR VENTA DE MAYOREO':'GENERAR COTIZACIÓN');
+      }
+      if(note)note.textContent=pending?'Se reutilizará el mismo folio y opId para evitar duplicados.':
+        (doc==='sale'?(nectarConnected?'Se verificará el inventario en Google Sheets antes de registrar la venta.':'Conecta con Google Sheets para verificar inventario y registrar ventas.'):'La cotización se guarda en este dispositivo; no registra venta ni modifica inventario.');
+      const alert=document.getElementById('wh-pending-alert');
+      if(alert)alert.classList.toggle('hidden',!pending);
+      if(!pending){
+        document.querySelectorAll('#view-wholesale input,#view-wholesale textarea').forEach(el=>el.disabled=false);
+        const selector=document.getElementById('wh-document-type');if(selector)selector.disabled=false;
+      }
     }
     function removeWholesaleProduct(id){
       const input=document.getElementById('wh-qty-'+id);
@@ -1107,6 +1126,11 @@
       renderWholesalePolicy();
       const selector=document.getElementById('wh-document-type');
       if(selector)selector.addEventListener('change',()=>{invalidateWholesalePending();updateWholesaleOrder();});
+      if(wholesalePending){
+        if(selector){selector.value='sale';selector.disabled=true;}
+        document.querySelectorAll('#view-wholesale input,#view-wholesale textarea').forEach(el=>el.disabled=true);
+        document.getElementById('wh-pending-alert')?.classList.remove('hidden');
+      }
       updateWholesaleOrder();
       renderWholesaleHistory();
     }
@@ -1354,6 +1378,7 @@
         salesHistory,
         wholesaleHistory,
         wholesaleDraft,
+        wholesalePending,
         folioWeek: localStorage.getItem('nectar_folio_week') || '44',
         folioSeq: localStorage.getItem('nectar_folio_seq') || '0'
       };
@@ -1375,6 +1400,10 @@
       if (data.wholesaleDraft && typeof data.wholesaleDraft==='object') {
         wholesaleDraft={...wholesaleDraft,...data.wholesaleDraft};
         localStorage.setItem(WHOLESALE_DRAFT_KEY,JSON.stringify(wholesaleDraft));
+      }
+      if (data.wholesalePending && data.wholesalePending.opId && data.wholesalePending.sale) {
+        wholesalePending=data.wholesalePending;
+        localStorage.setItem(WHOLESALE_PENDING_KEY,JSON.stringify(wholesalePending));
       }
       if (data.folioWeek) localStorage.setItem('nectar_folio_week', data.folioWeek);
       if (data.folioSeq) localStorage.setItem('nectar_folio_seq', data.folioSeq);
