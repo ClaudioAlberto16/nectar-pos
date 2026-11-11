@@ -433,6 +433,25 @@
       { id: 'ponedoras', name: '🐔 NÉCTAR PONEDORAS', cat: 'aves', bag: '3.4 kg', yieldKg: '10 kg', price: 85, color: '#eab308', phase: 'Postura (18s+)' }
     ];
 
+    /* CONFIGURACIÓN CENTRALIZADA DE MAYOREO — precios internos de NÉCTAR por kg de concentrado */
+    const WHOLESALE_CONFIG = Object.freeze({
+      minimumKg: 40,
+      tier1: { id:'mayoreo1', label:'MAYOREO 1', minKg:40, maxKg:199.99, marginTarget:0.35 },
+      tier2: { id:'mayoreo2', label:'MAYOREO 2', minKg:200, maxKg:null, marginTarget:0.30 },
+      products: {
+        starter:  { label:'Pollos Starter', line:'AVES', bagPrice:23.20, bulkPrice:21.50 },
+        grower:   { label:'Pollos Grower', line:'AVES', bagPrice:22.30, bulkPrice:20.70 },
+        finisher: { label:'Pollos Finisher', line:'AVES', bagPrice:21.60, bulkPrice:20.00 },
+        ponedoras:{ label:'Ponedoras Postura 2', line:'AVES', bagPrice:22.60, bulkPrice:20.90 },
+        f1:       { label:'Porcinos F1', line:'PORCINOS', bagPrice:27.20, bulkPrice:25.20 },
+        f2:       { label:'Porcinos F2', line:'PORCINOS', bagPrice:26.00, bulkPrice:24.10 },
+        f3:       { label:'Porcinos F3', line:'PORCINOS', bagPrice:23.90, bulkPrice:22.20 },
+        f4:       { label:'Porcinos F4', line:'PORCINOS', bagPrice:24.30, bulkPrice:22.50 }
+      }
+    });
+    const WHOLESALE_HISTORY_KEY = 'nectar_wholesale_history_v1';
+    const WHOLESALE_DRAFT_KEY = 'nectar_wholesale_draft_v1';
+
     /* 2. CONEXIÓN CENTRAL A GOOGLE SHEETS */
     // Pega aquí la URL del despliegue de Apps Script cuando esté publicado.
     const NECTAR_API_URL = 'https://script.google.com/macros/s/AKfycbwjuqSo3XYoWwZjabB9dw5m0b3gWHL5Y8_BLtxFrfP4szLFwrNA6dIkBa1TvcmgtgMr/exec';
@@ -466,6 +485,16 @@
     PRODUCTS.forEach(p => { if (stock[p.id] === undefined) stock[p.id] = 0; });
 
     let salesHistory = JSON.parse(localStorage.getItem('nectar_sales_history') || '[]');
+    let wholesaleHistory = [];
+    let wholesaleDraft = { client:'', phone:'', locality:'', observations:'', quantities:{} };
+    try {
+      const savedWholesaleHistory = JSON.parse(localStorage.getItem(WHOLESALE_HISTORY_KEY) || '[]');
+      if (Array.isArray(savedWholesaleHistory)) wholesaleHistory = savedWholesaleHistory;
+    } catch (e) { console.warn('No se pudo leer el historial local de mayoreo:', e); }
+    try {
+      const savedWholesaleDraft = JSON.parse(localStorage.getItem(WHOLESALE_DRAFT_KEY) || 'null');
+      if (savedWholesaleDraft && typeof savedWholesaleDraft === 'object') wholesaleDraft = {...wholesaleDraft,...savedWholesaleDraft};
+    } catch (e) { console.warn('No se pudo leer el borrador local de mayoreo:', e); }
 
     /* 3. FOLIOS POR SEMANA ISO */
     function getISOWeek() {
