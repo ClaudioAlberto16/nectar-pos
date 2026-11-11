@@ -1109,10 +1109,8 @@
         (doc==='sale'?(nectarConnected?'Se verificará el inventario en Google Sheets antes de registrar la venta.':'Conecta con Google Sheets para verificar inventario y registrar ventas.'):'La cotización se guarda en este dispositivo; no registra venta ni modifica inventario.');
       const alert=document.getElementById('wh-pending-alert');
       if(alert)alert.classList.toggle('hidden',!pending);
-      if(!pending){
-        document.querySelectorAll('#view-wholesale input,#view-wholesale textarea').forEach(el=>el.disabled=false);
-        const selector=document.getElementById('wh-document-type');if(selector)selector.disabled=false;
-      }
+      document.querySelectorAll('#view-wholesale input,#view-wholesale textarea').forEach(el=>el.disabled=pending);
+      const selector=document.getElementById('wh-document-type');if(selector)selector.disabled=pending;
     }
     function removeWholesaleProduct(id){
       const input=document.getElementById('wh-qty-'+id);
@@ -1176,70 +1174,92 @@
     async function generateWholesaleDocument(){
       const btn=document.getElementById('wh-generate-btn');
       if(!btn||btn.disabled||btn.dataset.sending==='1')return;
-      saveWholesaleDraft();
-      const calc=calculateWholesale(wholesaleDraft.quantities);
-      if(!calc.tier||!calc.lines.length){showToast('El pedido debe sumar al menos 40 kg para aplicar mayoreo.');return;}
-      const mode=document.getElementById('wh-document-type')?.value||'quote';
-      if(mode==='quote'){
-        const quote=buildWholesaleQuote(calc);
-        persistWholesaleHistory(quote);
-        currentSale=quote;
-        showTicket(quote);
-        showToast('Cotización guardada. No se modificó el inventario.');
-        return;
-      }
-      if(!nectarConnected){showToast('Conecta con Google Sheets antes de registrar una venta de mayoreo.');return;}
-      let sale;
-      let opId;
-      if(btn.dataset.pendingSale&&btn.dataset.pendingOpId){
-        try{sale=JSON.parse(btn.dataset.pendingSale);opId=btn.dataset.pendingOpId;}
-        catch(e){delete btn.dataset.pendingSale;delete btn.dataset.pendingOpId;}
-      }
-      if(!sale){
-        // Actualiza stock desde el origen central justo antes de validar la venta.
-        try{await nectarLoadFromSheets();}catch(err){showToast('No se pudo verificar el inventario central: '+err.message);return;}
-        const refreshedCalc=calculateWholesale(wholesaleDraft.quantities);
-        for(const line of refreshedCalc.lines){
-          if(!Number.isFinite(line.bagKg)||line.bagKg<=0){showToast('No se puede convertir de forma segura la presentación de '+line.cfg.label+' a kg.');return;}
-          const availableBags=Number(stock[line.id])||0;
-          const availableKg=wholesaleRound2(availableBags*line.bagKg);
-          if(availableBags+0.000001<line.inventoryQty){
-            showToast('Stock insuficiente de '+line.cfg.label+': solicitas '+line.kg.toFixed(2)+' kg; disponibles '+availableKg.toFixed(2)+' kg ('+availableBags.toFixed(3)+' bolsas equivalentes).');
-            return;
-          }
-        }
-        sale=buildWholesaleSale(refreshedCalc,generateNextFolio());
-        const ok=confirm('¿Confirmas registrar la VENTA DE MAYOREO?\n\nCliente: '+sale.client+'\nCantidad: '+sale.totalKg.toFixed(2)+' kg\nNivel: '+sale.wholesaleLevel+'\nTotal: '+wholesaleMoney(sale.total)+'\n\nSe descontará inventario convertido a equivalentes de bolsa.');
-        if(!ok)return;
-        opId=nectarOpId();
-        btn.dataset.pendingSale=JSON.stringify(sale);btn.dataset.pendingOpId=opId;
-      } else {
-        const ok=confirm('Reintentar exactamente la misma venta con el mismo identificador?\n'+sale.folio+' · '+wholesaleMoney(sale.total));
-        if(!ok)return;
-      }
-      btn.dataset.sending='1';btn.disabled=true;btn.textContent='REGISTRANDO...';
+      btn.dataset.sending='1';btn.disabled=true;
       const controls=document.querySelectorAll('#view-wholesale input,#view-wholesale textarea,#view-wholesale select');
-      controls.forEach(el=>el.disabled=true);
       try{
+        saveWholesaleDraft();
+        const calc=calculateWholesale(wholesaleDraft.quantities);
+        if(!calc.tier||!calc.lines.length){showToast('El pedido debe sumar al menos 40 kg para aplicar mayoreo.');return;}
+        const mode=wholesalePending?'sale':(document.getElementById('wh-document-type')?.value||'quote');
+        if(mode==='quote'){
+          const quote=buildWholesaleQuote(calc);
+          persistWholesaleHistory(quote);
+          currentSale=quote;
+          showTicket(quote);
+          showToast('Cotización guardada. No se modificó el inventario.');
+          return;
+        }
+        if(!nectarConnected){showToast('Conecta con Google Sheets antes de registrar una venta de mayoreo.');return;}
+
+        let sale=null,opId='';
+        if(wholesalePending){
+          sale=wholesalePending.sale;
+          opId=wholesalePending.opId;
+          const retryOk=confirm('Hay una venta con resultado pendiente. Reintentar exactamente la misma operación con el mismo folio e identificador?\\n'+sale.folio+' · '+wholesaleMoney(sale.total));
+          if(!retryOk)return;
+        }else{
+          // Relee el inventario central inmediatamente antes de validar la salida.
+          btn.textContent='VERIFICANDO INVENTARIO...';
+          await nectarLoadFromSheets();
+          const freshCalc=calculateWholesale(wholesaleDraft.quantities);
+          for(const line of freshCalc.lines){
+            if(!Number.isFinite(line.bagKg)||line.bagKg<=0){
+              showToast('No se puede convertir de forma segura la presentación de '+line.cfg.label+' a kg.');
+              return;
+            }
+            const availableBags=Number(stock[line.id]);
+            if(!Number.isFinite(availableBags)||availableBags<0){
+              showToast('El inventario de '+line.cfg.label+' no tiene una cantidad válida en Google Sheets.');
+              return;
+            }
+            const availableKg=wholesaleRound2(availableBags*line.bagKg);
+            if(availableBags+0.000001<line.inventoryQty){
+              showToast('Stock insuficiente de '+line.cfg.label+': solicitas '+line.kg.toFixed(2)+' kg; disponibles '+availableKg.toFixed(2)+' kg ('+availableBags.toFixed(3)+' bolsas equivalentes).');
+              return;
+            }
+          }
+          sale=buildWholesaleSale(freshCalc,generateNextFolio());
+          const confirmSale=confirm('¿Confirmas registrar la VENTA DE MAYOREO?\\n\\nCliente: '+sale.client+'\\nCantidad: '+sale.totalKg.toFixed(2)+' kg\\nNivel: '+sale.wholesaleLevel+'\\nTotal: '+wholesaleMoney(sale.total)+'\\n\\nSe descontará inventario convertido a equivalentes de bolsa.');
+          if(!confirmSale)return;
+          opId=nectarOpId();
+          wholesalePending={opId,sale};
+          localStorage.setItem(WHOLESALE_PENDING_KEY,JSON.stringify(wholesalePending));
+        }
+
+        btn.textContent='REGISTRANDO...';
+        controls.forEach(el=>el.disabled=true);
         const response=await nectarRequest('write',{type:'sale',opId,sale});
-        if(!response?.result||!response.result.stock)throw new Error('El servidor no devolvió las existencias actualizadas. Verifica el folio en Google Sheets antes de reintentar.');
-        stock=response.result.stock;localStorage.setItem('nectar_stock',JSON.stringify(stock));
-        const serverSale=response.result.sale||sale;
-        currentSale={...sale,...serverSale,isWholesale:true,isQuote:false,documentType:'VENTA DE MAYOREO'};
+        if(!response?.result||!response.result.stock){
+          throw new Error('El servidor no devolvió las existencias actualizadas. La operación queda pendiente; verifica el folio en Google Sheets antes de reintentar.');
+        }
+        stock=response.result.stock;
+        localStorage.setItem('nectar_stock',JSON.stringify(stock));
+        const returnedSale=response.result.sale||{};
+        currentSale={
+          ...sale,...returnedSale,
+          items:sale.items,
+          total:sale.total,
+          totalKg:sale.totalKg,
+          wholesaleLevel:sale.wholesaleLevel,
+          observations:sale.observations,
+          isWholesale:true,isQuote:false,documentType:'VENTA DE MAYOREO',
+          status:'Registrada en Google Sheets'
+        };
         addWholesaleSaleToLocalHistory(currentSale);
-        persistWholesaleHistory({...currentSale,status:'Registrada en Google Sheets'});
-        delete btn.dataset.pendingSale;delete btn.dataset.pendingOpId;
-        renderCatalog();renderStock();renderHistory();
+        persistWholesaleHistory(currentSale);
+        wholesalePending=null;
+        localStorage.removeItem(WHOLESALE_PENDING_KEY);
+        renderCatalog();renderStock();renderHistory();updateWholesaleOrder();
         showTicket(currentSale);
         showToast('Venta de mayoreo registrada y sincronizada.');
       }catch(err){
         console.error('Error al registrar venta de mayoreo:',err);
-        showToast(err.message+' Conservamos el mismo identificador; verifica Sheets antes de repetir.');
-        btn.textContent='REINTENTAR VENTA';
+        showToast(err.message+' '+(wholesalePending?'Se conservó el mismo folio e identificador; verifica Sheets antes de reintentar.':'No se generó una venta.'));
       }finally{
-        btn.dataset.sending='0';btn.disabled=false;
-        controls.forEach(el=>el.disabled=false);
-        if(!btn.dataset.pendingSale)updateWholesaleOrder();
+        btn.dataset.sending='0';
+        controls.forEach(el=>el.disabled=!!wholesalePending);
+        btn.disabled=false;
+        updateWholesaleOrder();
       }
     }
 
