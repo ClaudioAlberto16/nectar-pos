@@ -51,12 +51,14 @@
     </div>
 
     <!-- Navegación de vistas -->
-    <div class="flex items-center bg-neutral-900 border border-neutral-800 p-1 rounded-xl text-xs font-semibold gap-1">
-      <button id="nav-btn-pos" onclick="switchView('pos')" class="px-2.5 py-1.5 rounded-lg bg-amber-500 text-black font-bold transition">Ventas</button>
-      <button id="nav-btn-inv" onclick="switchView('inv')" class="px-2.5 py-1.5 rounded-lg text-neutral-400 hover:text-white transition">Stock</button>
-      <button id="nav-btn-his" onclick="switchView('his')" class="px-2.5 py-1.5 rounded-lg text-neutral-400 hover:text-white transition">Historial</button>
-      <button id="nav-btn-con" onclick="switchView('con')" class="px-2.5 py-1.5 rounded-lg text-neutral-400 hover:text-white transition">Consigna</button>
-      <button onclick="openSyncModal()" class="px-2 py-1.5 rounded-lg text-amber-400 hover:bg-neutral-800 transition" title="Sincronizar">☁</button>
+    <div class="flex items-center bg-neutral-900 border border-neutral-800 p-1 rounded-xl text-xs font-semibold gap-1 max-w-[72vw] sm:max-w-none overflow-x-auto">
+      <button id="nav-btn-pos" onclick="switchView('pos')" class="shrink-0 px-2.5 py-1.5 rounded-lg bg-amber-500 text-black font-bold transition">Ventas</button>
+      <button id="nav-btn-inv" onclick="switchView('inv')" class="shrink-0 px-2.5 py-1.5 rounded-lg text-neutral-400 hover:text-white transition">Stock</button>
+      <button id="nav-btn-his" onclick="switchView('his')" class="shrink-0 px-2.5 py-1.5 rounded-lg text-neutral-400 hover:text-white transition">Historial</button>
+      <button id="nav-btn-con" onclick="switchView('con')" class="shrink-0 px-2.5 py-1.5 rounded-lg text-neutral-400 hover:text-white transition">Consigna</button>
+      <button id="nav-btn-mayoreo" onclick="switchView('mayoreo')" class="shrink-0 px-2.5 py-1.5 rounded-lg text-neutral-400 hover:text-white transition">Mayoreo</button>
+      <button id="nav-btn-wholesale" onclick="switchView('wholesale')" class="shrink-0 px-2.5 py-1.5 rounded-lg text-neutral-400 hover:text-white transition">Cotización / Venta</button>
+      <button onclick="openSyncModal()" class="shrink-0 px-2 py-1.5 rounded-lg text-amber-400 hover:bg-neutral-800 transition" title="Sincronizar">☁</button>
     </div>
   </header>
 
@@ -141,6 +143,63 @@
         </div>
       </div>
     </div>
+
+    <!-- VISTA 4: POLÍTICA Y PRECIOS DE MAYOREO -->
+    <section id="view-mayoreo" class="hidden space-y-4">
+      <div class="bg-neutral-900 border border-neutral-800 rounded-2xl p-4 space-y-2">
+        <h2 class="font-bold text-white">📦 Política comercial de mayoreo</h2>
+        <p class="text-xs text-neutral-400">El nivel se determina por los kg totales de concentrado de toda la orden, sumando todas las fases.</p>
+        <div class="grid grid-cols-2 gap-2">
+          <div class="bg-neutral-950 border border-amber-500/40 rounded-xl p-3">
+            <b class="text-amber-400 text-sm">MAYOREO 1</b>
+            <p class="text-xs mt-1">40 a 199.99 kg</p>
+            <p class="text-[10px] text-neutral-500 mt-1">Margen bruto objetivo interno: 35%</p>
+          </div>
+          <div class="bg-neutral-950 border border-emerald-500/40 rounded-xl p-3">
+            <b class="text-emerald-400 text-sm">MAYOREO 2</b>
+            <p class="text-xs mt-1">Desde 200 kg</p>
+            <p class="text-[10px] text-neutral-500 mt-1">Margen bruto objetivo interno: 30%</p>
+          </div>
+        </div>
+        <p class="text-[10px] text-neutral-500">Precios de venta de NÉCTAR por kg de concentrado. No son precios sugeridos de reventa.</p>
+      </div>
+      <div id="wholesale-policy-content" class="space-y-3"></div>
+      <div class="bg-neutral-900 border border-neutral-800 rounded-2xl p-4 space-y-3">
+        <div class="flex items-center justify-between"><h3 class="font-bold text-sm">Historial de mayoreo</h3><span id="wh-history-count" class="text-[10px] text-neutral-500">0 operaciones</span></div>
+        <div id="wholesale-history" class="space-y-2"></div>
+      </div>
+    </section>
+
+    <!-- VISTA 5: COTIZACIÓN / VENTA DE MAYOREO -->
+    <section id="view-wholesale" class="hidden space-y-4">
+      <div class="bg-neutral-900 border border-neutral-800 rounded-2xl p-4 space-y-3">
+        <div><h2 class="font-bold text-white">🧾 Nueva orden de mayoreo</h2><p class="text-[11px] text-neutral-500">Captura kg de concentrado. Puedes combinar varias fases en una sola orden.</p></div>
+        <div class="grid grid-cols-1 gap-2 text-xs">
+          <label class="text-neutral-400">Cliente / productor <input id="wh-client" class="mt-1 w-full bg-neutral-950 border border-neutral-700 rounded-xl px-3 py-2 text-white" placeholder="Nombre del cliente"></label>
+          <label class="text-neutral-400">WhatsApp <input id="wh-phone" type="tel" class="mt-1 w-full bg-neutral-950 border border-neutral-700 rounded-xl px-3 py-2 text-white" placeholder="10 dígitos"></label>
+          <label class="text-neutral-400">Localidad <input id="wh-locality" class="mt-1 w-full bg-neutral-950 border border-neutral-700 rounded-xl px-3 py-2 text-white" placeholder="Municipio o comunidad"></label>
+          <label class="text-neutral-400">Observaciones (opcional) <textarea id="wh-observations" rows="2" class="mt-1 w-full bg-neutral-950 border border-neutral-700 rounded-xl px-3 py-2 text-white" placeholder="Notas de la orden"></textarea></label>
+        </div>
+      </div>
+      <div class="bg-neutral-900 border border-neutral-800 rounded-2xl p-4 space-y-3">
+        <h3 class="font-bold text-sm">🐥 AVES</h3><div id="wholesale-products-aves" class="space-y-2"></div>
+        <div class="border-t border-neutral-800 pt-3"><h3 class="font-bold text-sm">🐷 PORCINOS</h3><div id="wholesale-products-porcinos" class="space-y-2 mt-2"></div></div>
+      </div>
+      <div class="bg-neutral-900 border border-neutral-800 rounded-2xl p-4 space-y-3">
+        <h3 class="font-bold text-sm">Resumen de la orden</h3>
+        <div class="flex justify-between"><span class="text-xs text-neutral-400">Kilogramos totales</span><b id="wh-total-kg" class="text-amber-400">0.00 kg</b></div>
+        <div class="flex justify-between"><span class="text-xs text-neutral-400">Nivel aplicado</span><b id="wh-level" class="text-white">Sin nivel</b></div>
+        <div id="wh-minimum-warning" class="hidden rounded-lg border border-amber-500/40 bg-amber-500/10 text-amber-300 p-2 text-xs">La compra mínima para mayoreo es de 40 kg. Todavía no aplica precio de mayoreo.</div>
+        <div class="overflow-x-auto"><table class="w-full text-[11px]"><thead class="text-neutral-500 border-b border-neutral-700"><tr><th class="text-left py-2">Producto</th><th class="text-right">Kg</th><th class="text-right">Precio/kg</th><th class="text-right">Importe</th><th></th></tr></thead><tbody id="wh-order-lines"></tbody></table></div>
+        <div class="border-t border-neutral-700 pt-3 flex justify-between items-center"><span class="font-bold">TOTAL DE LA ORDEN</span><b id="wh-order-total" class="text-2xl text-amber-400 font-mono">$0.00</b></div>
+        <div class="space-y-2">
+          <label class="block text-xs text-neutral-400">Documento que deseas generar</label>
+          <select id="wh-document-type" class="w-full bg-neutral-950 border border-neutral-700 rounded-xl px-3 py-2 text-white"><option value="quote">COTIZACIÓN</option><option value="sale">VENTA DE MAYOREO</option></select>
+          <button id="wh-generate-btn" onclick="generateWholesaleDocument()" class="w-full py-3 rounded-xl bg-amber-500 text-black font-black text-xs disabled:opacity-40">GENERAR COTIZACIÓN</button>
+          <p id="wh-action-note" class="text-[10px] text-neutral-500">La cotización no registra una venta ni modifica el inventario.</p>
+        </div>
+      </div>
+    </section>
 
     <!-- VISTA 4: CONSIGNA -->
     <section id="view-con" class="hidden space-y-4">
@@ -253,7 +312,7 @@
     <div class="w-full max-w-sm my-auto space-y-3">
       
       <div class="flex items-center justify-between text-neutral-300 px-1">
-        <span class="text-xs font-bold text-emerald-400 flex items-center gap-1">✓ TICKET EMITIDO</span>
+        <span id="t-ticket-heading" class="text-xs font-bold text-emerald-400 flex items-center gap-1">✓ TICKET EMITIDO</span>
         <button id="btn-close-ticket-x" type="button" class="w-9 h-9 rounded-full bg-neutral-800 text-neutral-300 hover:text-white flex items-center justify-center text-lg font-bold shadow active:scale-90 transition">
           ✕
         </button>
@@ -272,9 +331,9 @@
 
         <div class="py-2.5 border-b border-dashed border-neutral-300 space-y-0.5 text-neutral-800 text-[10px]">
           <div><span class="font-bold">CLIENTE:</span> <span id="t-client">Cliente Mostrador</span></div>
-          <div><span class="font-bold">TELÉFONO:</span> <span id="t-phone">Sin registrar</span></div>
-          <div><span class="font-bold">ENTREGA:</span> <span id="t-location">Mostrador Bodega</span></div>
-          <div><span class="font-bold">MÉTODO:</span> <span id="t-method">EFECTIVO</span></div>
+          <div><span id="t-phone-label" class="font-bold">TELÉFONO:</span> <span id="t-phone">Sin registrar</span></div>
+          <div><span id="t-location-label" class="font-bold">ENTREGA:</span> <span id="t-location">Mostrador Bodega</span></div>
+          <div><span id="t-method-label" class="font-bold">MÉTODO:</span> <span id="t-method">EFECTIVO</span></div>
         </div>
 
         <div class="py-2.5 border-b border-dashed border-neutral-300">
@@ -289,7 +348,7 @@
 
         <div class="py-2.5 border-b border-dashed border-neutral-300 space-y-0.5">
           <div class="flex justify-between text-xs font-black text-black">
-            <span>TOTAL PAGADO:</span>
+            <span id="t-total-label">TOTAL PAGADO:</span>
             <span id="t-total">$0.00</span>
           </div>
           <div id="t-cash-box" class="flex justify-between text-[9px] text-neutral-600">
