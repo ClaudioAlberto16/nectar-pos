@@ -1448,7 +1448,24 @@
     async function nectarLoadFromSheets(){
       const res=await nectarRequest('bootstrap');
       stock=res.stock||{}; salesHistory=res.salesHistory||[]; conData=res.conData||{stores:[],history:[]};
-      if(Array.isArray(res.wholesaleHistory)){ wholesaleHistory=res.wholesaleHistory; localStorage.setItem(WHOLESALE_HISTORY_KEY,JSON.stringify(wholesaleHistory)); }
+      if(Array.isArray(res.wholesaleHistory)){
+        wholesaleHistory=res.wholesaleHistory;
+        localStorage.setItem(WHOLESALE_HISTORY_KEY,JSON.stringify(wholesaleHistory));
+        // Recupera también operaciones PREPARED desde el servidor. Así, si el
+        // usuario cambia de teléfono/navegador o borra el almacenamiento local,
+        // puede reintentar con el mismo opId y el mismo folio, sin duplicar.
+        const serverPending=wholesaleHistory.find(x=>x && x._wholesaleTxn &&
+          x._wholesaleTxn.status==='PREPARED' && x._wholesaleTxn.opId && x.folio);
+        if(serverPending){
+          if(!wholesalePending || wholesalePending.opId===serverPending._wholesaleTxn.opId){
+            wholesalePending={opId:String(serverPending._wholesaleTxn.opId),sale:serverPending};
+            localStorage.setItem(WHOLESALE_PENDING_KEY,JSON.stringify(wholesalePending));
+          }else{
+            console.error('Hay una operación PREPARED distinta de la pendiente local. No se sobrescribió ninguna; requiere revisión.');
+            showToast('Hay otra venta pendiente en el servidor. No registres otra venta; revisa el historial.');
+          }
+        }
+      }
       PRODUCTS.forEach(p=>{ if(stock[p.id]===undefined) stock[p.id]=0; });
       localStorage.setItem('nectar_stock',JSON.stringify(stock));
       localStorage.setItem('nectar_sales_history',JSON.stringify(salesHistory));
