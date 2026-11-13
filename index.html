@@ -833,27 +833,15 @@
 
     function buildTicketShareText(s){
       if(s?.isWholesale||String(s?.documentType||'').includes('MAYOREO')){
-        const detail=(s.items||[]).map(it=>
-          it.name+' | '+Number(it.quantityKg||0).toFixed(2)+' kg | '+wholesaleMoney(it.pricePerKg)+'/kg | '+wholesaleMoney(it.subtotal)
-        );
+        // En WhatsApp solo acompañamos la imagen con el encabezado y la fecha.
+        // El detalle completo del pedido permanece en el comprobante adjunto.
         return [
           '🌾 NÉCTAR NUTRICIÓN ANIMAL',
           'Tú pones el maíz, nosotros el resto.',
           s.documentType||'MAYOREO',
           'Folio: '+s.folio,
-          'Fecha: '+(s.date||''),
-          'Cliente: '+(s.client||'Cliente sin nombre'),
-          'WhatsApp: '+(s.phone||'Sin registrar'),
-          'Localidad: '+(s.location||'Sin especificar'),
-          'DETALLE DEL PEDIDO',
-          'Producto | Cantidad | Precio/kg | Importe',
-          ...detail,
-          'Kilogramos totales: '+Number(s.totalKg||0).toFixed(2)+' kg',
-          'Nivel aplicado: '+(s.wholesaleLevel||'—'),
-          'TOTAL: '+wholesaleMoney(s.total)+' MXN',
-          s.observations?'Observaciones: '+s.observations:'',
-          'Gracias por confiar en NÉCTAR Nutrición Animal.'
-        ].filter(Boolean).join('\n');
+          'Fecha: '+(s.date||'')
+        ].join('\n');
       }
       return ['🌾 Ticket de compra '+s.folio,
         'NÉCTAR Nutrición Animal. Total: '+wholesaleMoney(s.total)+' MXN'].join('\n');
