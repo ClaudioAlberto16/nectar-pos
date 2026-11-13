@@ -758,7 +758,7 @@
       const opId=paymentModal.dataset.pendingOpId||(paymentModal.dataset.pendingOpId=nectarOpId());
       if(btn){btn.disabled=true;btn.textContent='Guardando en Google Sheets...';}
       try {
-        const response=await nectarRequest('write',{type:'sale',opId,sale});
+        const response=await nectarRequest('write',{type:'wholesaleSale',opId,sale});
         stock=response.result.stock; localStorage.setItem('nectar_stock',JSON.stringify(stock));
         currentSale=response.result.sale||sale; salesHistory.unshift(currentSale); localStorage.setItem('nectar_sales_history',JSON.stringify(salesHistory));
         delete paymentModal.dataset.pendingOpId;
@@ -1186,12 +1186,6 @@
         observations:wholesaleDraft.observations.trim(),status:'Cotización guardada en este dispositivo'
       };
     }
-    function addWholesaleSaleToLocalHistory(sale){
-      if(!salesHistory.some(x=>x.folio===sale.folio)){
-        salesHistory.unshift(sale);
-        localStorage.setItem('nectar_sales_history',JSON.stringify(salesHistory));
-      }
-    }
     async function generateWholesaleDocument(){
       const btn=document.getElementById('wh-generate-btn');
       if(!btn||btn.disabled||btn.dataset.sending==='1')return;
@@ -1241,7 +1235,7 @@
           }
           const provisionalId='MAY-PEND-'+(window.crypto&&typeof window.crypto.randomUUID==='function'?window.crypto.randomUUID():Date.now().toString(36)+'-'+Math.random().toString(36).slice(2));
           sale=buildWholesaleSale(freshCalc,'#'+provisionalId);
-          const confirmSale=confirm('¿Confirmas registrar la VENTA DE MAYOREO?\n\nCliente: '+sale.client+'\nCantidad: '+sale.totalKg.toFixed(2)+' kg\nNivel: '+sale.wholesaleLevel+'\nTotal: '+wholesaleMoney(sale.total)+'\n\nEl folio definitivo #NCT será asignado por Google Sheets.\nSe descontará inventario convertido a equivalentes decimales de bolsa.');
+          const confirmSale=confirm('¿Confirmas registrar la VENTA DE MAYOREO?\n\nCliente: '+sale.client+'\nCantidad: '+sale.totalKg.toFixed(2)+' kg\nNivel: '+sale.wholesaleLevel+'\nTotal: '+wholesaleMoney(sale.total)+'\n\nGoogle Sheets asignará el folio definitivo independiente del nivel (1M o 2M).\nSe descontará inventario convertido a equivalentes decimales de bolsa.');
           if(!confirmSale)return;
           opId=nectarOpId();
           wholesalePending={opId,sale};
@@ -1267,7 +1261,6 @@
           isWholesale:true,isQuote:false,documentType:'VENTA DE MAYOREO',
           status:'Registrada en Google Sheets'
         };
-        addWholesaleSaleToLocalHistory(currentSale);
         persistWholesaleHistory(currentSale);
         wholesalePending=null;
         localStorage.removeItem(WHOLESALE_PENDING_KEY);
@@ -1467,6 +1460,7 @@
     async function nectarLoadFromSheets(){
       const res=await nectarRequest('bootstrap');
       stock=res.stock||{}; salesHistory=res.salesHistory||[]; conData=res.conData||{stores:[],history:[]};
+      if(Array.isArray(res.wholesaleHistory)){ wholesaleHistory=res.wholesaleHistory; localStorage.setItem(WHOLESALE_HISTORY_KEY,JSON.stringify(wholesaleHistory)); }
       PRODUCTS.forEach(p=>{ if(stock[p.id]===undefined) stock[p.id]=0; });
       localStorage.setItem('nectar_stock',JSON.stringify(stock));
       localStorage.setItem('nectar_sales_history',JSON.stringify(salesHistory));
