@@ -457,8 +457,8 @@
     const WHOLESALE_PENDING_KEY = 'nectar_wholesale_pending_v1';
 
     /* 2. CONEXIÓN CENTRAL A GOOGLE SHEETS */
-    // Pega aquí la URL del despliegue de Apps Script cuando esté publicado.
-    const NECTAR_API_URL = 'https://script.google.com/macros/s/AKfycbwjuqSo3XYoWwZjabB9dw5m0b3gWHL5Y8_BLtxFrfP4szLFwrNA6dIkBa1TvcmgtgMr/exec';
+    // Backend aislado de PRUEBAS MAYOREO. No sustituir por la URL de producción.
+    const NECTAR_API_URL = 'https://script.google.com/macros/s/AKfycbwfHegKrtiyCUw8Ak5lVQg0gA_8gTbROATCVG_deo8hJhK_YoXoNJeXYCuDMOaQrS4/exec';
     const NECTAR_JSONP = {};
     function nectarRequest(action, payload) {
       return new Promise((resolve, reject) => {
