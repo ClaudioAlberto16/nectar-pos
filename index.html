@@ -151,12 +151,12 @@
         <p class="text-xs text-neutral-400">El nivel se determina por los kg totales de concentrado de toda la orden, sumando todas las fases.</p>
         <div class="grid grid-cols-2 gap-2">
           <div class="bg-neutral-950 border border-amber-500/40 rounded-xl p-3">
-            <b class="text-amber-400 text-sm">MAYOREO 1</b>
+            <b class="text-amber-400 text-sm">1M · MAYOREO 1</b>
             <p class="text-xs mt-1">40 a 199.99 kg</p>
             <p class="text-[10px] text-neutral-500 mt-1">Margen bruto objetivo interno: 35%</p>
           </div>
           <div class="bg-neutral-950 border border-emerald-500/40 rounded-xl p-3">
-            <b class="text-emerald-400 text-sm">MAYOREO 2</b>
+            <b class="text-emerald-400 text-sm">2M · MAYOREO 2</b>
             <p class="text-xs mt-1">Desde 200 kg</p>
             <p class="text-[10px] text-neutral-500 mt-1">Margen bruto objetivo interno: 30%</p>
           </div>
@@ -439,8 +439,8 @@
     /* CONFIGURACIÓN CENTRALIZADA DE MAYOREO — precios internos de NÉCTAR por kg de concentrado */
     const WHOLESALE_CONFIG = Object.freeze({
       minimumKg: 40,
-      tier1: { id:'mayoreo1', label:'MAYOREO 1', minKg:40, maxKg:199.99, marginTarget:0.35 },
-      tier2: { id:'mayoreo2', label:'MAYOREO 2', minKg:200, maxKg:null, marginTarget:0.30 },
+      tier1: { id:'mayoreo1', label:'1M', minKg:40, maxKg:199.99, marginTarget:0.35 },
+      tier2: { id:'mayoreo2', label:'2M', minKg:200, maxKg:null, marginTarget:0.30 },
       products: {
         starter:  { label:'Pollos Starter', line:'AVES', bagPrice:23.20, bulkPrice:21.50 },
         grower:   { label:'Pollos Grower', line:'AVES', bagPrice:22.30, bulkPrice:20.70 },
@@ -1049,7 +1049,7 @@
         const rows=Object.entries(WHOLESALE_CONFIG.products).filter(([,v])=>v.line===line).map(([id,v])=>
           '<tr class="border-t border-neutral-800"><td class="py-2 pr-2">'+conEsc(v.label)+'</td><td class="text-right px-1">'+wholesaleMoney(v.bagPrice)+'</td><td class="text-right pl-1">'+wholesaleMoney(v.bulkPrice)+'</td></tr>').join('');
         return '<div class="bg-neutral-900 border border-neutral-800 rounded-2xl p-3"><h3 class="font-bold text-sm mb-2">'+icon+' '+label+'</h3>'+
-          '<table class="w-full text-[11px]"><thead class="text-neutral-500"><tr><th class="text-left pb-2">Producto / kg</th><th class="text-right pb-2">M1</th><th class="text-right pb-2">M2</th></tr></thead><tbody>'+rows+'</tbody></table></div>';
+          '<table class="w-full text-[11px]"><thead class="text-neutral-500"><tr><th class="text-left pb-2">Producto / kg</th><th class="text-right pb-2">1M</th><th class="text-right pb-2">2M</th></tr></thead><tbody>'+rows+'</tbody></table></div>';
       };
       target.innerHTML=table('AVES','AVES','🐥')+table('PORCINOS','PORCINOS','🐷');
     }
