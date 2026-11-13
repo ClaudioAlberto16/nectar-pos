@@ -758,7 +758,7 @@
       const opId=paymentModal.dataset.pendingOpId||(paymentModal.dataset.pendingOpId=nectarOpId());
       if(btn){btn.disabled=true;btn.textContent='Guardando en Google Sheets...';}
       try {
-        const response=await nectarRequest('write',{type:'wholesaleSale',opId,sale});
+        const response=await nectarRequest('write',{type:'sale',opId,sale});
         stock=response.result.stock; localStorage.setItem('nectar_stock',JSON.stringify(stock));
         currentSale=response.result.sale||sale; salesHistory.unshift(currentSale); localStorage.setItem('nectar_sales_history',JSON.stringify(salesHistory));
         delete paymentModal.dataset.pendingOpId;
@@ -1244,7 +1244,7 @@
 
         btn.textContent='REGISTRANDO...';
         controls.forEach(el=>el.disabled=true);
-        const response=await nectarRequest('write',{type:'sale',opId,sale});
+        const response=await nectarRequest('write',{type:'wholesaleSale',opId,sale});
         if(!response?.result||!response.result.stock){
           throw new Error('El servidor no devolvió las existencias actualizadas. La operación queda pendiente; verifica el folio en Google Sheets antes de reintentar.');
         }
