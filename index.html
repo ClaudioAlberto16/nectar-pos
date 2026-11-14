@@ -1454,7 +1454,7 @@
         const localQuotes=wholesaleHistory.filter(x=>x && (x.isQuote || String(x.documentType||'').includes('COTIZACIÓN')));
         const merged=new Map(localQuotes.map(x=>[String(x.folio),x]));
         res.wholesaleHistory.forEach(x=>{if(x && x.folio)merged.set(String(x.folio),x);});
-        wholesaleHistory=Array.from(merged.values()).slice(-300).reverse();
+        wholesaleHistory=Array.from(merged.values()).slice(0,300);
         localStorage.setItem(WHOLESALE_HISTORY_KEY,JSON.stringify(wholesaleHistory));
         // Recupera también operaciones PREPARED desde el servidor. Así, si el
         // usuario cambia de teléfono/navegador o borra el almacenamiento local,
