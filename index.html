@@ -206,7 +206,7 @@
     <section id="view-con" class="hidden space-y-4">
       <div class="bg-neutral-900 border border-neutral-800 rounded-2xl p-4 space-y-3">
         <div class="flex items-center justify-between"><h2 class="text-sm font-bold text-white">🏪 Consignación por punto de venta</h2><span class="text-[10px] text-amber-400">Corte semanal</span></div>
-        <div class="grid grid-cols-2 gap-2"><input id="con-new-name" placeholder="Nombre del punto de venta" class="col-span-2 bg-neutral-950 border border-neutral-700 rounded-xl px-3 py-2 text-sm text-white"><div class="col-span-1 text-[10px] text-neutral-500 flex items-center">Anticipo libre en primera entrega</div><button onclick="conAddStore()" class="bg-amber-500 text-black rounded-xl font-bold text-xs">+ Agregar punto</button></div>
+        <div class="grid grid-cols-2 gap-2"><input id="con-new-name" placeholder="Nombre del punto de venta" class="col-span-2 bg-neutral-950 border border-neutral-700 rounded-xl px-3 py-2 text-sm text-white"><div class="col-span-1 text-[10px] text-neutral-500 flex items-center">Anticipo de primera entrega</div><button onclick="conAddStore()" class="bg-amber-500 text-black rounded-xl font-bold text-xs">+ Agregar punto</button></div>
         <p class="text-[10px] text-neutral-500">El anticipo de la primera entrega se descuenta de la cuenta. Las reposiciones no generan deuda hasta que el producto se venda.</p>
       </div>
       <div id="con-summary" class="grid grid-cols-2 gap-2"></div>
@@ -1548,7 +1548,7 @@
       try{await conPersist(nectarOpId(),st.id,null);document.getElementById('con-new-name').value='';conRender();showToast('Punto de venta agregado');}catch(e){conData.stores=conData.stores.filter(x=>x.id!==st.id);conSave();showToast(e.message);}
     }
     function conStoreMove(id,type){
-      const st=conData.stores.find(x=>x.id===id);if(!st)return;
+      let st=conData.stores.find(x=>x.id===id);if(!st)return;
       const title=type==='delivery'?'Nueva entrega / reposición':'Corte semanal';
       let rows='';PRODUCTS.forEach(p=>{rows+=`<div class="grid grid-cols-[1fr_70px] gap-2 items-center py-1 border-b border-neutral-800"><label class="text-[11px]" style="color:${p.color}">${p.phase}</label><input id="con-${type}-${p.id}" type="number" min="0" step="1" value="0" class="bg-neutral-950 border border-neutral-700 rounded-lg p-2 text-right text-white text-xs"></div>`;});
       let replenishmentRows='';PRODUCTS.forEach(p=>{replenishmentRows+=`<div class="grid grid-cols-[1fr_70px] gap-2 items-center py-1 border-b border-neutral-800"><label class="text-[11px]" style="color:${p.color}">${p.phase}</label><input id="con-replenish-${p.id}" type="number" min="0" step="1" value="0" class="bg-neutral-950 border border-neutral-700 rounded-lg p-2 text-right text-white text-xs"></div>`;});
@@ -1557,6 +1557,9 @@
       dlg.querySelector('#con-save-move').onclick=async()=>{
         const saveBtn=dlg.querySelector('#con-save-move');
         if(saveBtn.disabled)return;
+        // Reobtener el punto en cada intento: un rollback puede reemplazar conData
+        // y dejar obsoleta la referencia capturada al abrir el formulario.
+        st=conData.stores.find(x=>x.id===id);if(!st){showToast('El punto de venta ya no existe.');dlg.remove();return;}
         const vals={};
         for(const p of PRODUCTS){
           const input=dlg.querySelector('#con-'+type+'-'+p.id);
