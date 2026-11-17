@@ -122,7 +122,7 @@
     <div id="view-inv" class="hidden space-y-3">
       <div class="bg-neutral-900 border border-neutral-800 rounded-2xl p-4">
         <div class="flex items-center justify-between mb-3">
-          <h2 class="text-sm font-bold text-white">Existencias en Bodega</h2>
+          <h2 class="text-sm font-bold text-white">Existencias en Bodega (kg de concentrado)</h2>
           <button onclick="resetDefaultStock()" class="text-[10px] text-neutral-400 underline hover:text-white">Restablecer base</button>
         </div>
         <div id="stock-list" class="space-y-2.5">
@@ -551,7 +551,7 @@
                 ${p.phase}
               </span>
               <span class="text-[10px] ${available <= 5 ? 'text-red-400 font-bold' : 'text-neutral-500'} font-mono">
-                Stock: ${available}
+                Stock: ${Number(available).toFixed(2)} kg
               </span>
             </div>
             <h4 class="text-xs font-bold text-white leading-tight mb-1">${p.name}</h4>
@@ -743,7 +743,7 @@
         total += prod.price*q;
         items.push({id:prod.id,name:prod.name,bag:prod.bag,yieldKg:prod.yieldKg,qty:q,price:prod.price,subtotal:prod.price*q});
       });
-      for (const it of items) { if ((stock[it.id]||0) < it.qty) { showToast('Stock insuficiente: '+it.name); return; } }
+      for (const it of items) { const prod=PRODUCTS.find(p=>p.id===it.id); const kgOut=it.qty*productBagKg(prod); if ((stock[it.id]||0)+1e-9 < kgOut) { showToast('Stock insuficiente: '+it.name+' (necesitas '+kgOut.toFixed(2)+' kg de concentrado).'); return; } it.stockKg=kgOut; }
       const folio=generateNextFolio(), now=new Date();
       const dateStr=now.toLocaleDateString('es-MX',{day:'2-digit',month:'2-digit',year:'numeric'})+' '+now.toLocaleTimeString('es-MX',{hour:'2-digit',minute:'2-digit',hour12:true});
       const client=document.getElementById('cust-name').value.trim()||'Cliente Mostrador';
@@ -977,10 +977,11 @@
     const wholesaleRound2 = n => Math.round((Number(n)||0)*100)/100;
     const wholesaleRound6 = n => Math.round((Number(n)||0)*1000000)/1000000;
     const wholesaleMoney = n => new Intl.NumberFormat('es-MX',{style:'currency',currency:'MXN',minimumFractionDigits:2,maximumFractionDigits:2}).format(Number(n)||0);
-    function wholesaleBagKg(product){
+    function productBagKg(product){
       const m=String(product?.bag||'').match(/[0-9]+(?:\.[0-9]+)?/);
       return m?Number(m[0]):NaN;
     }
+    function wholesaleBagKg(product){ return productBagKg(product); }
     function calculateWholesale(quantities){
       const products=Object.entries(WHOLESALE_CONFIG.products).map(([id,cfg])=>{
         const product=PRODUCTS.find(p=>p.id===id);
@@ -993,7 +994,7 @@
       const lines=products.map(x=>{
         const pricePerKg=tier?(tier.id==='mayoreo2'?x.cfg.bulkPrice:x.cfg.bagPrice):null;
         const subtotal=pricePerKg===null?null:wholesaleRound2(x.kg*pricePerKg);
-        return {...x,pricePerKg,subtotal,inventoryQty: x.bagKg>0?wholesaleRound6(x.kg/x.bagKg):NaN};
+        return {...x,pricePerKg,subtotal,inventoryQtyKg:x.kg};
       });
       const total=tier?wholesaleRound2(lines.reduce((sum,x)=>sum+(x.subtotal||0),0)):null;
       return {lines,totalKg,tier,total};
@@ -1143,13 +1144,12 @@
     }
     function buildWholesaleSale(calc,folio){
       const items=calc.lines.map(x=>{
-        const equivalentBags=x.inventoryQty;
         const pricePerBag=wholesaleRound2(x.pricePerKg*x.bagKg);
         return {
           id:x.id,name:x.cfg.label,bag:x.product.bag,yieldKg:x.product.yieldKg,
-          qty:equivalentBags,price:pricePerBag,subtotal:x.subtotal,
-          quantityKg:x.kg,pricePerKg:x.pricePerKg,inventoryQtyBags:equivalentBags,
-          inventoryUnit:'bolsa_equivalente'
+          qty:x.kg,price:pricePerBag,subtotal:x.subtotal,
+          quantityKg:x.kg,pricePerKg:x.pricePerKg,inventoryQtyKg:x.kg,
+          inventoryUnit:'kg_concentrado'
         };
       });
       return {
@@ -1167,8 +1167,8 @@
         client:wholesaleDraft.client.trim()||'Cliente sin nombre',phone:wholesaleDraft.phone.trim()||'Sin registrar',
         location:wholesaleDraft.locality.trim()||'Sin especificar',method:'COTIZACIÓN',
         items:calc.lines.map(x=>({id:x.id,name:x.cfg.label,bag:x.product.bag,yieldKg:x.product.yieldKg,
-          qty:x.inventoryQty,price:wholesaleRound2(x.pricePerKg*x.bagKg),subtotal:x.subtotal,
-          quantityKg:x.kg,pricePerKg:x.pricePerKg,inventoryQtyBags:x.inventoryQty,inventoryUnit:'bolsa_equivalente'})),
+          qty:x.kg,price:wholesaleRound2(x.pricePerKg*x.bagKg),subtotal:x.subtotal,
+          quantityKg:x.kg,pricePerKg:x.pricePerKg,inventoryQtyKg:x.kg,inventoryUnit:'kg_concentrado'})),
         total:calc.total,isWholesale:true,isQuote:true,documentType:'COTIZACIÓN DE MAYOREO',
         totalKg:calc.totalKg,wholesaleLevel:calc.tier.label,
         observations:wholesaleDraft.observations.trim(),status:'Cotización guardada en este dispositivo'
@@ -1210,20 +1210,19 @@
               showToast('No se puede convertir de forma segura la presentación de '+line.cfg.label+' a kg.');
               return;
             }
-            const availableBags=Number(stock[line.id]);
-            if(!Number.isFinite(availableBags)||availableBags<0){
-              showToast('El inventario de '+line.cfg.label+' no tiene una cantidad válida en Google Sheets.');
+            const availableKg=Number(stock[line.id]);
+            if(!Number.isFinite(availableKg)||availableKg<0){
+              showToast('El inventario de '+line.cfg.label+' no tiene una cantidad válida en kg en Google Sheets.');
               return;
             }
-            const availableKg=wholesaleRound2(availableBags*line.bagKg);
-            if(availableBags+0.000001<line.inventoryQty){
-              showToast('Stock insuficiente de '+line.cfg.label+': solicitas '+line.kg.toFixed(2)+' kg; disponibles '+availableKg.toFixed(2)+' kg ('+availableBags.toFixed(3)+' bolsas equivalentes).');
+            if(availableKg+0.000001<line.kg){
+              showToast('Stock insuficiente de '+line.cfg.label+': solicitas '+line.kg.toFixed(2)+' kg; disponibles '+availableKg.toFixed(2)+' kg.');
               return;
             }
           }
           const provisionalId='MAY-PEND-'+(window.crypto&&typeof window.crypto.randomUUID==='function'?window.crypto.randomUUID():Date.now().toString(36)+'-'+Math.random().toString(36).slice(2));
           sale=buildWholesaleSale(freshCalc,'#'+provisionalId);
-          const confirmSale=confirm('¿Confirmas registrar la VENTA DE MAYOREO?\n\nCliente: '+sale.client+'\nCantidad: '+sale.totalKg.toFixed(2)+' kg\nNivel: '+sale.wholesaleLevel+'\nTotal: '+wholesaleMoney(sale.total)+'\n\nGoogle Sheets asignará el folio definitivo independiente del nivel (1M o 2M).\nSe descontará inventario convertido a equivalentes decimales de bolsa.');
+          const confirmSale=confirm('¿Confirmas registrar la VENTA DE MAYOREO?\n\nCliente: '+sale.client+'\nCantidad: '+sale.totalKg.toFixed(2)+' kg\nNivel: '+sale.wholesaleLevel+'\nTotal: '+wholesaleMoney(sale.total)+'\n\nGoogle Sheets asignará el folio definitivo independiente del nivel (1M o 2M).\nSe descontarán directamente los kg de concentrado puro del inventario.');
           if(!confirmSale)return;
           opId=nectarOpId();
           wholesalePending={opId,sale};
@@ -1296,7 +1295,7 @@
         row.innerHTML = `
           <div>
             <h4 class="text-xs font-bold text-white">${p.name}</h4>
-            <span class="text-[10px] text-neutral-400">Bolsa: ${p.bag} • $${p.price} MXN</span>
+            <span class="text-[10px] text-neutral-400">Bolsa: ${p.bag} • ${p.price} MXN</span><span class="block text-[10px] text-amber-400">Stock: ${Number(q).toFixed(2)} kg</span>
           </div>
           <div class="flex items-center gap-1.5">
             <button onclick="modifyStock('${p.id}', -5)" class="px-2 py-1 bg-neutral-800 text-neutral-300 rounded text-[10px] font-bold">-5</button>
@@ -1569,10 +1568,10 @@
         if(type==='delivery'){
           const total=Object.values(vals).reduce((a,b)=>a+b,0);if(!total){showToast('Captura al menos un costal');return;}
           const deliveryValue=PRODUCTS.reduce((a,p)=>a+vals[p.id]*p.price,0);
-          const enoughLocalStock=PRODUCTS.every(p=>(Number(stock[p.id])||0)>=vals[p.id]);
+          const enoughLocalStock=PRODUCTS.every(p=>(Number(stock[p.id])||0)+1e-9>=vals[p.id]*productBagKg(p));
           if(enoughLocalStock){
-            remoteStockDelta={}; PRODUCTS.forEach(p=>remoteStockDelta[p.id]=-vals[p.id]);
-            PRODUCTS.forEach(p=>{stock[p.id]=(Number(stock[p.id])||0)-vals[p.id];});
+            remoteStockDelta={}; PRODUCTS.forEach(p=>remoteStockDelta[p.id]=-vals[p.id]*productBagKg(p));
+            PRODUCTS.forEach(p=>{stock[p.id]=Number(((Number(stock[p.id])||0)-vals[p.id]*productBagKg(p)).toFixed(6));});
             localStorage.setItem('nectar_stock',JSON.stringify(stock));
             stockWasDeducted=true;
           }else{
