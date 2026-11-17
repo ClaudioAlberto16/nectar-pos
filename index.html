@@ -1575,10 +1575,12 @@
             localStorage.setItem('nectar_stock',JSON.stringify(stock));
             stockWasDeducted=true;
           }else{
-            // El inventario local puede estar desactualizado. Registra la entrega
-            // en consignación, pero no descuentes existencias físicas no verificadas.
-            remoteStockDelta=null;
-            console.warn('Entrega de consigna sin descuento de bodega: stock local insuficiente o no sincronizado.',{requested:vals,localStock:stock});
+            // Nunca registrar una entrega si no se puede descontar de bodega.
+            // Evita crear inventario en consignación sin salida física equivalente.
+            const missing=PRODUCTS.filter(p=>(Number(stock[p.id])||0)+1e-9<vals[p.id]*productBagKg(p))
+              .map(p=>p.phase+' (solicitado '+(vals[p.id]*productBagKg(p)).toFixed(2)+' kg; disponible '+(Number(stock[p.id])||0).toFixed(2)+' kg)');
+            showToast('Entrega cancelada: inventario insuficiente o desactualizado. Sincroniza con Google Sheets. '+missing.join('; '));
+            return;
           }
           PRODUCTS.forEach(p=>{st.stock[p.id]=(Number(st.stock[p.id])||0)+vals[p.id];});
           conData.history.unshift({date:new Date().toISOString(),store:st.name,type:'Entrega / reposición',items:vals,detail:total+' costales entregados · Valor '+money(deliveryValue),amount:0});
