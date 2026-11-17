@@ -1696,7 +1696,37 @@
       hist.innerHTML=filtered.slice(0,100).map(h=>`<div class="bg-neutral-950 border border-neutral-800 rounded-lg p-3"><div class="flex justify-between gap-2"><b>${conEsc(h.store)} · ${conEsc(h.type)}</b><span class="text-neutral-500">${new Date(h.date).toLocaleDateString('es-MX')}</span></div><div class="text-neutral-400 mt-1">${conEsc(h.items?conFormatItems(h.items)+(h.replenishment?' · Reposición: '+conFormatItems(h.replenishment):''):(h.detail||''))}</div>${h.sales!==undefined?`<div class="mt-1 text-[10px]">Venta: ${money(h.sales)} · Saldo anterior: ${money(h.previousBalance||0)} · Crédito anterior: ${money(h.previousCredit||0)} · Pagado: ${money(h.paid)} · Pendiente: ${money(h.balance)} · A favor: ${money(h.credit||0)}</div>`:''}</div>`).join('')||'<p class="text-neutral-500 text-center py-3">Sin movimientos para este cliente.</p>';
     }
     function conEsc(v){return String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
-    async function conDeleteStore(id){if(!confirm('¿Eliminar este punto de venta y su inventario en consignación?'))return;const before=JSON.parse(JSON.stringify(conData));conData.stores=conData.stores.filter(s=>s.id!==id);try{await conPersist(nectarOpId(),id,null);conRender();}catch(e){conData=before;conSave();showToast(e.message);}}
+    async function conDeleteStore(id){
+      const st=conData.stores.find(s=>s.id===id);
+      if(!st)return;
+      const hasStock=PRODUCTS.some(p=>(Number(st.stock?.[p.id])||0)>1e-9);
+      const hasMovements=conData.history.some(h=>h && h.store===st.name);
+      const account=conAccountSummary(st.name);
+      if(hasStock){
+        showToast('No se puede eliminar: el punto todavía tiene inventario en consignación. Registra el corte y devuelve el producto primero.');
+        return;
+      }
+      if(account.balance>0.009 || account.credit>0.009){
+        showToast('No se puede eliminar: el punto tiene saldo pendiente o saldo a favor. Primero debe quedar liquidado.');
+        return;
+      }
+      if(hasMovements){
+        showToast('No se puede eliminar: este punto ya tiene historial. Se conserva para proteger sus registros y evitar mezclar cuentas futuras.');
+        return;
+      }
+      if(!confirm('¿Eliminar este punto de venta sin movimientos ni inventario?'))return;
+      const before=JSON.parse(JSON.stringify(conData));
+      conData.stores=conData.stores.filter(s=>s.id!==id);
+      try{
+        await conPersist(nectarOpId(),id,null);
+        conRender();
+        showToast('Punto de venta eliminado.');
+      }catch(e){
+        conData=before;
+        conSave();
+        showToast(e.message);
+      }
+    }
     const switchViewOriginal = switchView;
     switchView = function(view){switchViewOriginal(view);document.getElementById('view-con').classList.add('hidden');if(view==='con'){document.getElementById('view-con').classList.remove('hidden');document.getElementById('nav-btn-con').className='px-2.5 py-1.5 rounded-lg bg-amber-500 text-black font-bold transition';conRender();}};
 
