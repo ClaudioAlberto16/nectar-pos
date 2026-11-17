@@ -1551,7 +1551,8 @@
       const st=conData.stores.find(x=>x.id===id);if(!st)return;
       const title=type==='delivery'?'Nueva entrega / reposición':'Corte semanal';
       let rows='';PRODUCTS.forEach(p=>{rows+=`<div class="grid grid-cols-[1fr_70px] gap-2 items-center py-1 border-b border-neutral-800"><label class="text-[11px]" style="color:${p.color}">${p.phase}</label><input id="con-${type}-${p.id}" type="number" min="0" step="1" value="0" class="bg-neutral-950 border border-neutral-700 rounded-lg p-2 text-right text-white text-xs"></div>`;});
-      const body=type==='delivery'?`<p class="text-xs text-neutral-400">Costales que salen de bodega y se dejan en ${st.name}.</p>${rows}${!st.firstDelivery?`<label class="block text-xs text-neutral-400 mt-3">Anticipo recibido en esta primera entrega ($)</label><input id="con-first-advance" type="number" min="0" step="0.01" value="0" class="w-full bg-neutral-950 border border-neutral-700 rounded-lg p-2 text-white"><p class="text-[10px] text-neutral-500 mt-1">Captura la cantidad real que te entrega el cliente. Puede ser diferente al 40%.</p>`:''}`:`<p class="text-xs text-neutral-400">Captura los costales vendidos desde el último corte y el pago recibido. Las reposiciones no generan deuda hasta que el producto se venda. Si el pago supera la deuda, el excedente queda como saldo a favor.</p>${rows}<label class="block text-xs text-neutral-400 mt-3">Pago recibido ($)</label><input id="con-cut-payment" type="number" min="0" step="0.01" value="0" class="w-full bg-neutral-950 border border-neutral-700 rounded-lg p-2 text-white">`;
+      let replenishmentRows='';PRODUCTS.forEach(p=>{replenishmentRows+=`<div class="grid grid-cols-[1fr_70px] gap-2 items-center py-1 border-b border-neutral-800"><label class="text-[11px]" style="color:${p.color}">${p.phase}</label><input id="con-replenish-${p.id}" type="number" min="0" step="1" value="0" class="bg-neutral-950 border border-neutral-700 rounded-lg p-2 text-right text-white text-xs"></div>`;});
+      const body=type==='delivery'?`<p class="text-xs text-neutral-400">Costales que salen de bodega y se dejan en ${st.name}.</p>${rows}${!st.firstDelivery?`<label class="block text-xs text-neutral-400 mt-3">Anticipo recibido en esta primera entrega ($)</label><input id="con-first-advance" type="number" min="0" step="0.01" value="0" class="w-full bg-neutral-950 border border-neutral-700 rounded-lg p-2 text-white"><p class="text-[10px] text-neutral-500 mt-1">Captura la cantidad real que te entrega el cliente. Puede ser diferente al 40%.</p>`:''}`:`<p class="text-xs text-neutral-400">Registra lo vendido, el producto que dejas de reposición y el pago recibido. La reposición aumenta el inventario del punto, pero no genera deuda hasta que se venda.</p><b class="block text-[11px] text-amber-400 mt-3">PRODUCTO VENDIDO</b>${rows}<b class="block text-[11px] text-emerald-400 mt-3">NUEVA REPOSICIÓN</b>${replenishmentRows}<label class="block text-xs text-neutral-400 mt-3">Pago recibido ($)</label><input id="con-cut-payment" type="number" min="0" step="0.01" value="0" class="w-full bg-neutral-950 border border-neutral-700 rounded-lg p-2 text-white">`;
       const dlg=document.createElement('div');dlg.className='fixed inset-0 z-[80] bg-black/90 flex items-end sm:items-center justify-center p-3';dlg.innerHTML=`<div class="bg-[#181a1d] border border-neutral-700 rounded-2xl p-4 w-full max-w-md max-h-[90vh] overflow-y-auto"><div class="flex justify-between items-center mb-3"><h3 class="font-bold">${title} · ${st.name}</h3><button class="text-neutral-400" onclick="this.closest('.fixed').remove()">✕</button></div>${body}<div class="flex gap-2 mt-4"><button class="flex-1 bg-neutral-700 rounded-xl py-3 text-xs" onclick="this.closest('.fixed').remove()">Cancelar</button><button class="flex-1 bg-amber-500 text-black rounded-xl py-3 font-bold text-xs" id="con-save-move">Guardar</button></div></div>`;document.body.appendChild(dlg);
       dlg.querySelector('#con-save-move').onclick=async()=>{
         const saveBtn=dlg.querySelector('#con-save-move');
@@ -1565,6 +1566,10 @@
         const beforeStock=JSON.parse(JSON.stringify(stock)); const beforeCon=JSON.parse(JSON.stringify(conData));
         let remoteStockDelta=null;
         let stockWasDeducted=false;
+        const replenishment={};
+        if(type==='cut'){
+          for(const p of PRODUCTS){const input=dlg.querySelector('#con-replenish-'+p.id);replenishment[p.id]=Math.max(0,parseInt(input?.value,10)||0);}
+        }
         if(type==='delivery'){
           const total=Object.values(vals).reduce((a,b)=>a+b,0);if(!total){showToast('Captura al menos un costal');return;}
           const deliveryValue=PRODUCTS.reduce((a,p)=>a+vals[p.id]*p.price,0);
@@ -1601,8 +1606,13 @@
           }
         }else{
           let total=0;for(const p of PRODUCTS){if(vals[p.id]>(st.stock[p.id]||0)){showToast('Venta mayor a existencia: '+p.phase);return;}total+=vals[p.id]*p.price;}
-          if(!Object.values(vals).some(v=>v>0)){showToast('Captura al menos una venta');return;}
           const paid=Math.max(0,Number(dlg.querySelector('#con-cut-payment').value)||0);
+          const hasSales=Object.values(vals).some(v=>v>0),hasReplenishment=Object.values(replenishment).some(v=>v>0);
+          if(!hasSales&&!hasReplenishment&&paid<=0){showToast('Registra ventas, reposición o un pago');return;}
+          const missing=PRODUCTS.filter(p=>(Number(stock[p.id])||0)+1e-9<replenishment[p.id]*productBagKg(p));
+          if(missing.length){showToast('Reposición cancelada: inventario insuficiente. '+missing.map(p=>p.phase+' (disponible '+(Number(stock[p.id])||0).toFixed(2)+' kg)').join('; '));return;}
+          remoteStockDelta={};
+          PRODUCTS.forEach(p=>{const kg=replenishment[p.id]*productBagKg(p);remoteStockDelta[p.id]=-kg;stock[p.id]=Number(((Number(stock[p.id])||0)-kg).toFixed(6));st.stock[p.id]=(Number(st.stock[p.id])||0)+replenishment[p.id];});
           const previousNet=conAccountNet(st.name);
           const netAfter=previousNet+total-paid;
           const previousBalance=Math.max(0,previousNet);
@@ -1610,7 +1620,7 @@
           const balance=Math.max(0,netAfter);
           const credit=Math.max(0,-netAfter);
           PRODUCTS.forEach(p=>st.stock[p.id]-=vals[p.id]);
-          conData.history.unshift({date:new Date().toISOString(),store:st.name,type:'Corte semanal',items:vals,detail:conFormatItems(vals)+' · Ventas '+money(total)+' · Saldo anterior '+money(previousBalance)+' · Crédito anterior '+money(previousCredit)+' · Pago recibido '+money(paid),amount:paid,sales:total,previousBalance,previousCredit,paid,balance,credit});
+          conData.history.unshift({date:new Date().toISOString(),store:st.name,type:'Corte semanal',items:vals,replenishment,detail:conFormatItems(vals)+' · Reposición '+conFormatItems(replenishment)+' · Ventas '+money(total)+' · Saldo anterior '+money(previousBalance)+' · Crédito anterior '+money(previousCredit)+' · Pago recibido '+money(paid),amount:paid,sales:total,previousBalance,previousCredit,paid,balance,credit});
         }
         const opId=dlg.dataset.pendingOpId||(dlg.dataset.pendingOpId=nectarOpId());
         saveBtn.disabled=true;saveBtn.textContent='Guardando...';
