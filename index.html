@@ -207,7 +207,7 @@
       <div class="bg-neutral-900 border border-neutral-800 rounded-2xl p-4 space-y-3">
         <div class="flex items-center justify-between"><h2 class="text-sm font-bold text-white">🏪 Consignación por punto de venta</h2><span class="text-[10px] text-amber-400">Corte semanal</span></div>
         <div class="grid grid-cols-2 gap-2"><input id="con-new-name" placeholder="Nombre del punto de venta" class="col-span-2 bg-neutral-950 border border-neutral-700 rounded-xl px-3 py-2 text-sm text-white"><div class="col-span-1 text-[10px] text-neutral-500 flex items-center">Anticipo libre en primera entrega</div><button onclick="conAddStore()" class="bg-amber-500 text-black rounded-xl font-bold text-xs">+ Agregar punto</button></div>
-        <p class="text-[10px] text-neutral-500">El anticipo se registra solo en la primera entrega. Las reposiciones posteriores no generan anticipo.</p>
+        <p class="text-[10px] text-neutral-500">El anticipo de la primera entrega se descuenta de la cuenta. Las reposiciones no generan deuda hasta que el producto se venda.</p>
       </div>
       <div id="con-summary" class="grid grid-cols-2 gap-2"></div>
       <div id="con-stores" class="space-y-3"></div>
@@ -1551,7 +1551,7 @@
       const st=conData.stores.find(x=>x.id===id);if(!st)return;
       const title=type==='delivery'?'Nueva entrega / reposición':'Corte semanal';
       let rows='';PRODUCTS.forEach(p=>{rows+=`<div class="grid grid-cols-[1fr_70px] gap-2 items-center py-1 border-b border-neutral-800"><label class="text-[11px]" style="color:${p.color}">${p.phase}</label><input id="con-${type}-${p.id}" type="number" min="0" step="1" value="0" class="bg-neutral-950 border border-neutral-700 rounded-lg p-2 text-right text-white text-xs"></div>`;});
-      const body=type==='delivery'?`<p class="text-xs text-neutral-400">Costales que salen de bodega y se dejan en ${st.name}.</p>${rows}${!st.firstDelivery?`<label class="block text-xs text-neutral-400 mt-3">Anticipo recibido en esta primera entrega ($)</label><input id="con-first-advance" type="number" min="0" step="0.01" value="0" class="w-full bg-neutral-950 border border-neutral-700 rounded-lg p-2 text-white"><p class="text-[10px] text-neutral-500 mt-1">Captura la cantidad real que te entrega el cliente. Puede ser diferente al 40%.</p>`:''}`:`<p class="text-xs text-neutral-400">Captura los costales vendidos desde el último corte y el dinero que realmente recibiste. El inventario restante se calcula automáticamente.</p>${rows}<label class="block text-xs text-neutral-400 mt-3">Pago recibido ($)</label><input id="con-cut-payment" type="number" min="0" step="0.01" value="0" class="w-full bg-neutral-950 border border-neutral-700 rounded-lg p-2 text-white">`;
+      const body=type==='delivery'?`<p class="text-xs text-neutral-400">Costales que salen de bodega y se dejan en ${st.name}.</p>${rows}${!st.firstDelivery?`<label class="block text-xs text-neutral-400 mt-3">Anticipo recibido en esta primera entrega ($)</label><input id="con-first-advance" type="number" min="0" step="0.01" value="0" class="w-full bg-neutral-950 border border-neutral-700 rounded-lg p-2 text-white"><p class="text-[10px] text-neutral-500 mt-1">Captura la cantidad real que te entrega el cliente. Puede ser diferente al 40%.</p>`:''}`:`<p class="text-xs text-neutral-400">Captura los costales vendidos desde el último corte y el pago recibido. Las reposiciones no generan deuda hasta que el producto se venda. Si el pago supera la deuda, el excedente queda como saldo a favor.</p>${rows}<label class="block text-xs text-neutral-400 mt-3">Pago recibido ($)</label><input id="con-cut-payment" type="number" min="0" step="0.01" value="0" class="w-full bg-neutral-950 border border-neutral-700 rounded-lg p-2 text-white">`;
       const dlg=document.createElement('div');dlg.className='fixed inset-0 z-[80] bg-black/90 flex items-end sm:items-center justify-center p-3';dlg.innerHTML=`<div class="bg-[#181a1d] border border-neutral-700 rounded-2xl p-4 w-full max-w-md max-h-[90vh] overflow-y-auto"><div class="flex justify-between items-center mb-3"><h3 class="font-bold">${title} · ${st.name}</h3><button class="text-neutral-400" onclick="this.closest('.fixed').remove()">✕</button></div>${body}<div class="flex gap-2 mt-4"><button class="flex-1 bg-neutral-700 rounded-xl py-3 text-xs" onclick="this.closest('.fixed').remove()">Cancelar</button><button class="flex-1 bg-amber-500 text-black rounded-xl py-3 font-bold text-xs" id="con-save-move">Guardar</button></div></div>`;document.body.appendChild(dlg);
       dlg.querySelector('#con-save-move').onclick=async()=>{
         const saveBtn=dlg.querySelector('#con-save-move');
@@ -1603,12 +1603,14 @@
           let total=0;for(const p of PRODUCTS){if(vals[p.id]>(st.stock[p.id]||0)){showToast('Venta mayor a existencia: '+p.phase);return;}total+=vals[p.id]*p.price;}
           if(!Object.values(vals).some(v=>v>0)){showToast('Captura al menos una venta');return;}
           const paid=Math.max(0,Number(dlg.querySelector('#con-cut-payment').value)||0);
-          const previousBalance=conData.history.filter(h=>h.store===st.name&&h.type==='Corte semanal').reduce((sum,h)=>sum+(Number(h.balance)||0),0);
-          const totalDue=previousBalance+total;
-          if(paid>totalDue){showToast('El pago supera la deuda acumulada ('+money(totalDue)+').');return;}
-          const balance=Math.max(0,totalDue-paid);
+          const previousNet=conAccountNet(st.name);
+          const netAfter=previousNet+total-paid;
+          const previousBalance=Math.max(0,previousNet);
+          const previousCredit=Math.max(0,-previousNet);
+          const balance=Math.max(0,netAfter);
+          const credit=Math.max(0,-netAfter);
           PRODUCTS.forEach(p=>st.stock[p.id]-=vals[p.id]);
-          conData.history.unshift({date:new Date().toISOString(),store:st.name,type:'Corte semanal',items:vals,detail:conFormatItems(vals)+' · Ventas '+money(total)+' · Saldo anterior '+money(previousBalance)+' · Pago recibido '+money(paid),amount:paid,sales:total,previousBalance,paid,balance});
+          conData.history.unshift({date:new Date().toISOString(),store:st.name,type:'Corte semanal',items:vals,detail:conFormatItems(vals)+' · Ventas '+money(total)+' · Saldo anterior '+money(previousBalance)+' · Crédito anterior '+money(previousCredit)+' · Pago recibido '+money(paid),amount:paid,sales:total,previousBalance,previousCredit,paid,balance,credit});
         }
         const opId=dlg.dataset.pendingOpId||(dlg.dataset.pendingOpId=nectarOpId());
         saveBtn.disabled=true;saveBtn.textContent='Guardando...';
@@ -1627,12 +1629,27 @@
         }
       };
     }
+    // La primera entrega genera el saldo inicial; el anticipo lo reduce.
+    // Las reposiciones posteriores no generan deuda hasta que se vendan.
+    function conAccountNet(storeName){
+      const events=conData.history.filter(h=>h.store===storeName);
+      const advances=events.filter(h=>h.type==='Anticipo inicial').sort((a,b)=>new Date(a.date)-new Date(b.date));
+      const first=advances[0]||null;
+      const openingDelivery=Number(first?.deliveryValue)||0;
+      const initialAdvance=Number(first?.advance??first?.amount)||0;
+      const cuts=events.filter(h=>h.type==='Corte semanal');
+      return openingDelivery-initialAdvance+cuts.reduce((sum,h)=>sum+(Number(h.sales)||0)-(Number(h.paid??h.amount)||0),0);
+    }
+    function conAccountSummary(storeName){
+      const net=conAccountNet(storeName);
+      return {balance:Math.max(0,net),credit:Math.max(0,-net)};
+    }
     function conRender(){
       const stores=document.getElementById('con-stores');if(!stores)return;
       const bagCount=conData.stores.reduce((a,s)=>a+PRODUCTS.reduce((b,p)=>b+(s.stock[p.id]||0),0),0);
       const totalValue=conData.stores.reduce((a,s)=>a+PRODUCTS.reduce((b,p)=>b+(s.stock[p.id]||0)*p.price,0),0);
       document.getElementById('con-summary').innerHTML=`<div class="bg-neutral-900 border border-neutral-800 rounded-xl p-3"><div class="text-[10px] text-neutral-400">Puntos de venta</div><b class="text-xl">${conData.stores.length}</b></div><div class="bg-neutral-900 border border-neutral-800 rounded-xl p-3"><div class="text-[10px] text-neutral-400">Costales en consignación</div><b class="text-xl text-amber-400">${bagCount}</b></div><div class="col-span-2 bg-neutral-900 border border-neutral-800 rounded-xl p-3"><div class="text-[10px] text-neutral-400">Valor del inventario en calle (referencia)</div><b class="text-lg text-emerald-400">${money(totalValue)}</b></div>`;
-      stores.innerHTML=conData.stores.map(st=>`<div class="bg-neutral-900 border border-neutral-800 rounded-2xl p-3"><div class="flex justify-between gap-2 items-center"><div><h3 class="font-bold text-sm">🏪 ${conEsc(st.name)}</h3><p class="text-[10px] text-neutral-500">Anticipo inicial: ${money(st.advance)} · Saldo pendiente: ${money(conData.history.filter(h=>h.store===st.name&&h.type==='Corte semanal').reduce((sum,h)=>sum+(Number(h.balance)||0),0))}</p></div><button onclick="conStoreMove('${st.id}','delivery')" class="bg-amber-500 text-black px-3 py-2 rounded-lg text-[10px] font-bold">+ Entrega</button></div><div class="grid grid-cols-2 gap-2 mt-3">${PRODUCTS.map(p=>`<div class="bg-neutral-950 rounded-lg p-2 border border-neutral-800"><div class="text-[9px] font-bold" style="color:${p.color}">${p.phase}</div><div class="text-lg font-bold">${st.stock[p.id]||0}<span class="text-[9px] text-neutral-500 ml-1">costales</span></div></div>`).join('')}</div><div class="flex gap-2 mt-3"><button onclick="conStoreMove('${st.id}','cut')" class="flex-1 border border-emerald-700 text-emerald-400 rounded-lg py-2 text-xs font-bold">Registrar corte semanal</button><button onclick="conDeleteStore('${st.id}')" class="px-3 border border-neutral-700 text-neutral-500 rounded-lg text-xs">Eliminar</button></div></div>`).join('')||'<div class="text-center text-neutral-500 text-xs p-6 bg-neutral-900 rounded-xl">Todavía no hay puntos de venta registrados.</div>';
+      stores.innerHTML=conData.stores.map(st=>`<div class="bg-neutral-900 border border-neutral-800 rounded-2xl p-3"><div class="flex justify-between gap-2 items-center"><div><h3 class="font-bold text-sm">🏪 ${conEsc(st.name)}</h3><p class="text-[10px] text-neutral-500">Anticipo inicial: ${money(st.advance)} · Saldo pendiente: ${money(conAccountSummary(st.name).balance)} · A favor: ${money(conAccountSummary(st.name).credit)}</p></div><button onclick="conStoreMove('${st.id}','delivery')" class="bg-amber-500 text-black px-3 py-2 rounded-lg text-[10px] font-bold">+ Entrega</button></div><div class="grid grid-cols-2 gap-2 mt-3">${PRODUCTS.map(p=>`<div class="bg-neutral-950 rounded-lg p-2 border border-neutral-800"><div class="text-[9px] font-bold" style="color:${p.color}">${p.phase}</div><div class="text-lg font-bold">${st.stock[p.id]||0}<span class="text-[9px] text-neutral-500 ml-1">costales</span></div></div>`).join('')}</div><div class="flex gap-2 mt-3"><button onclick="conStoreMove('${st.id}','cut')" class="flex-1 border border-emerald-700 text-emerald-400 rounded-lg py-2 text-xs font-bold">Registrar corte semanal</button><button onclick="conDeleteStore('${st.id}')" class="px-3 border border-neutral-700 text-neutral-500 rounded-lg text-xs">Eliminar</button></div></div>`).join('')||'<div class="text-center text-neutral-500 text-xs p-6 bg-neutral-900 rounded-xl">Todavía no hay puntos de venta registrados.</div>';
       const filter=document.getElementById('con-history-filter');
       const selected=filter?.value||'todos';
       if(filter){
@@ -1651,7 +1668,7 @@
       const selected=document.getElementById('con-history-filter')?.value||'todos';
       const filtered=selected==='todos'?conData.history:conData.history.filter(h=>h.store===selected);
       document.getElementById('con-history-count').textContent=filtered.length+' movimientos';
-      hist.innerHTML=filtered.slice(0,100).map(h=>`<div class="bg-neutral-950 border border-neutral-800 rounded-lg p-3"><div class="flex justify-between gap-2"><b>${conEsc(h.store)} · ${conEsc(h.type)}</b><span class="text-neutral-500">${new Date(h.date).toLocaleDateString('es-MX')}</span></div><div class="text-neutral-400 mt-1">${conEsc(h.items?conFormatItems(h.items):(h.detail||''))}</div>${h.sales!==undefined?`<div class="mt-1 text-[10px]">Venta: ${money(h.sales)} · Saldo anterior: ${money(h.previousBalance||0)} · Pagado: ${money(h.paid)} · Pendiente acumulado: ${money(h.balance)}</div>`:''}</div>`).join('')||'<p class="text-neutral-500 text-center py-3">Sin movimientos para este cliente.</p>';
+      hist.innerHTML=filtered.slice(0,100).map(h=>`<div class="bg-neutral-950 border border-neutral-800 rounded-lg p-3"><div class="flex justify-between gap-2"><b>${conEsc(h.store)} · ${conEsc(h.type)}</b><span class="text-neutral-500">${new Date(h.date).toLocaleDateString('es-MX')}</span></div><div class="text-neutral-400 mt-1">${conEsc(h.items?conFormatItems(h.items):(h.detail||''))}</div>${h.sales!==undefined?`<div class="mt-1 text-[10px]">Venta: ${money(h.sales)} · Saldo anterior: ${money(h.previousBalance||0)} · Crédito anterior: ${money(h.previousCredit||0)} · Pagado: ${money(h.paid)} · Pendiente: ${money(h.balance)} · A favor: ${money(h.credit||0)}</div>`:''}</div>`).join('')||'<p class="text-neutral-500 text-center py-3">Sin movimientos para este cliente.</p>';
     }
     function conEsc(v){return String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
     async function conDeleteStore(id){if(!confirm('¿Eliminar este punto de venta y su inventario en consignación?'))return;const before=JSON.parse(JSON.stringify(conData));conData.stores=conData.stores.filter(s=>s.id!==id);try{await conPersist(nectarOpId(),id,null);conRender();}catch(e){conData=before;conSave();showToast(e.message);}}
