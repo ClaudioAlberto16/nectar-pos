@@ -1455,6 +1455,18 @@
         res.wholesaleHistory.forEach(x=>{if(x && x.folio)merged.set(String(x.folio),x);});
         wholesaleHistory=Array.from(merged.values()).slice(0,300);
         localStorage.setItem(WHOLESALE_HISTORY_KEY,JSON.stringify(wholesaleHistory));
+        // Si el pendiente local ya aparece COMMITTED en el historial central,
+        // limpiar únicamente la marca local: la venta ya fue aplicada y no debe reintentarse.
+        if(wholesalePending && wholesalePending.opId){
+          const committedPending=wholesaleHistory.find(x=>x && x._wholesaleTxn &&
+            String(x._wholesaleTxn.opId)===String(wholesalePending.opId) &&
+            x._wholesaleTxn.status==='COMMITTED');
+          if(committedPending){
+            wholesalePending=null;
+            localStorage.removeItem(WHOLESALE_PENDING_KEY);
+            console.info('Pendiente local limpiado: la operación ya está COMMITTED en el historial central.');
+          }
+        }
         // Recupera también operaciones PREPARED desde el servidor. Así, si el
         // usuario cambia de teléfono/navegador o borra el almacenamiento local,
         // puede reintentar con el mismo opId y el mismo folio, sin duplicar.
