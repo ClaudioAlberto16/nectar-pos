@@ -457,8 +457,8 @@
     const WHOLESALE_PENDING_KEY = 'nectar_wholesale_pending_v1';
 
     /* 2. CONEXIÓN CENTRAL A GOOGLE SHEETS */
-    // Backend aislado de PRUEBAS MAYOREO. No sustituir por la URL de producción.
-    const NECTAR_API_URL = 'https://script.google.com/macros/s/AKfycbxghY9iKGWKdzswyRWikV6-kRZgmuBsse18f9gHvd-vXtU3LUbizRRvPeRQtTcbsmMJ/exec';
+    // Backend oficial de producción.
+    const NECTAR_API_URL = 'https://script.google.com/macros/s/AKfycbwjuqSo3XYoWwZjabB9dw5m0b3gWHL5Y8_BLtxFrfP4szLFwrNA6dIkBa1TvcmgtgMr/exec';
     const NECTAR_JSONP = {};
     function nectarRequest(action, payload) {
       return new Promise((resolve, reject) => {
